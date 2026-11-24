@@ -1,0 +1,940 @@
+using Overcapped_Optimizer.Core;
+using Overcapped_Optimizer.Helpers;
+using Overcapped_Optimizer.Models;
+using System;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.ConstrainedExecution;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace Overcapped_Optimizer
+{
+    public partial class MainFrm : Form
+    {
+        public static MainFrm? Instance { get; private set; }
+        public System.Windows.Forms.Timer? autoFlushTimer;
+        public NotifyIcon? sysTrayIcon;
+
+        private CancellationTokenSource? _pingCts;
+        private bool _isLoadingUi;
+        private readonly Version? AppVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        public GameProfile? ActiveGame => gameDropdown.SelectedItem as GameProfile;
+        private FpsOverlay? _fpsOverlay;
+
+        public MainFrm()
+        {
+            InitializeComponent();
+            Instance = this;
+
+            menuStrip1.Renderer = new GUI.ROMenuRenderer();
+            menuStrip1.ForeColor = GUI.ROPalette.TextPrimary;
+            menuStrip1.BackColor = GUI.ROPalette.SurfaceCard;
+
+            cardProfCompetitive.Click += (_, _) => SelectPresetIndexIfValid(0);
+            cardProfBalanced.Click += (_, _) => SelectPresetIndexIfValid(1);
+            cardProfRecommended.Click += (_, _) => SelectPresetIndexIfValid(2);
+            cardProfUltra.Click += (_, _) => SelectPresetIndexIfValid(3);
+            profileDropdown.SelectedIndexChanged += (_, _) => SyncProfileCards();
+
+            Optimizer.ActiveGameChanged += OnWatchdogActiveGameChanged;
+        }
+
+        private void MainFrm_Load(object? sender, EventArgs e)
+        {
+            _isLoadingUi = true;
+            try
+            {
+                string _versionString = $"{AppVersion.Major}.{AppVersion.Minor}";
+                Text = $"Overcapped Optimizer v{_versionString}";
+                roThemeContainer1.SubHeader = $"v{_versionString}  |  IDLE: NO GAME RUNNING...";
+
+                AppSettings.Load();
+                JsonProfilePackManager.LoadAllPacks();
+
+                if (AppSettings.Current.Games.Count == 0)
+                {
+                    var found = GameScanner.ScanAllInstalledGames();
+                    AppSettings.Current.Games.AddRange(found);
+                    AppSettings.Save();
+                }
+
+                updateToggle.Checked = AppSettings.Current.CheckForUpdates;
+                autoPowerPlanToggle.Checked = AppSettings.Current.AutoPowerPlan;
+                gameModeDvrToggle.Checked = AppSettings.Current.GameModeAndDisableDvr;
+                disabledFSO.Checked = AppSettings.Current.DisableFSO;
+                throttleAppsToggle.Checked = AppSettings.Current.ThrottleBackgroundApps;
+                autoFlushChk.Checked = AppSettings.Current.AutoFlushEnabled;
+                smartFlushToggle.Checked = AppSettings.Current.SmartFlushEnabled;
+                smartFlushThreshold.Value = Math.Clamp(AppSettings.Current.SmartFlushThresholdGB, 1, 16);
+                autoFlushinterval.Value = Math.Clamp(AppSettings.Current.AutoFlushInterval, 1, 240);
+                autoFlushMinHour.Text = AppSettings.Current.AutoFlushUnit.Equals("Hours", StringComparison.OrdinalIgnoreCase) ? "Hours" : "Minutes";
+                autoFlushSound.Checked = AppSettings.Current.AutoFlushSfx;
+                disableNicPowerToggle.Checked = AppSettings.Current.DisableNicPowerSaving;
+                txtServerIp.Text = AppSettings.Current.LastPingServer;
+                pCoresToggle.Checked = AppSettings.Current.PCoresOnly;
+                fpsOverlayToggle.Checked = AppSettings.Current.FpsOverlayEnabled;
+                int posIdx = fpsPositionDropdown.Items.IndexOf(AppSettings.Current.FpsOverlayPosition);
+                fpsPositionDropdown.SelectedIndex = posIdx >= 0 ? posIdx : 0;
+                string savedOpacity = $"{AppSettings.Current.FpsOverlayOpacity}%";
+                int opIdx = fpsOpacityDropdown.Items.IndexOf(savedOpacity);
+                fpsOpacityDropdown.SelectedIndex = opIdx >= 0 ? opIdx : 2;
+                RefreshGameDropdown(AppSettings.Current.ActiveGameId);
+            }
+            finally
+            {
+                _isLoadingUi = false;
+            }
+
+            if (AppSettings.Current.CheckForUpdates)
+                _ = Updates.CheckForUpdates();
+
+            if (AppSettings.Current.AutoFlushEnabled && !Optimizer.IsAdministrator())
+            {
+                AppSettings.Current.AutoFlushEnabled = false;
+                autoFlushChk.Checked = false;
+                AppSettings.Save();
+            }
+
+            Optimizer.SyncWatchdog();
+            Optimizer.InitializeAutoFlushTimer();
+
+            if (AppSettings.Current.FpsOverlayEnabled)
+            {
+                if (Optimizer.IsAdministrator())
+                {
+                    StartFpsOverlay();
+                }
+                else
+                {
+                    _isLoadingUi = true;
+                    AppSettings.Current.FpsOverlayEnabled = false;
+                    fpsOverlayToggle.Checked = false;
+                    _isLoadingUi = false;
+                    AppSettings.Save();
+                }
+            }
+
+            try
+            {
+                if (AppSettings.Current.DisableFSO)
+                    Optimizer.ApplyFSOState(true);
+                if (AppSettings.Current.GameModeAndDisableDvr)
+                    Optimizer.ApplyGameModeAndDvr(true);
+            }
+            catch (Exception ex) { ExceptionHandler.LogError(ex); }
+
+            lblCPUInfo.Text = $"{HardwareDetector.GetCpuName()} ({HardwareDetector.GetCpuSpeedInGhz()} GHz)";
+            lblGPUInfo.Text = $"{HardwareDetector.GetGpuName()} ({HardwareDetector.GetGpuVramInGB():F0}GB VRAM)";
+            lblRAMInfo.Text = $"{HardwareDetector.GetRamInfo()} ({HardwareDetector.GetTotalMemoryInGB():F0} GB)";
+
+            ContextMenuStrip trayMenu = new ContextMenuStrip { Renderer = new GUI.ROMenuRenderer() };
+            trayMenu.Items.Add("Launch Active Game...", null, (_, _) => TrayHandler.LaunchGame(ActiveGame));
+            trayMenu.Items.Add("Open", null, (_, _) => TrayHandler.ShowFormFromTray());
+            trayMenu.Items.Add("Exit", null, (_, _) =>
+            {
+                if (sysTrayIcon != null) sysTrayIcon.Visible = false;
+                Optimizer.RestoreAllRuntimeStates();
+                Application.Exit();
+            });
+
+            sysTrayIcon = new NotifyIcon
+            {
+                Icon = this.Icon,
+                Text = "Overcapped Optimizer",
+                ContextMenuStrip = trayMenu,
+                Visible = false
+            };
+            sysTrayIcon.DoubleClick += (_, _) => TrayHandler.ShowFormFromTray();
+
+            navDashboard.Selected = true;
+        }
+
+        private void MainFrm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            _pingCts?.Cancel();
+            Optimizer.ActiveGameChanged -= OnWatchdogActiveGameChanged;
+            Optimizer.RestoreAllRuntimeStates();
+            StopFpsOverlay();
+            AppSettings.Save();
+        }
+
+        private void OnWatchdogActiveGameChanged(string? runningGameName)
+        {
+            string _versionString = $"{AppVersion.Major}.{AppVersion.Minor}";
+            if (IsDisposed || !IsHandleCreated) return;
+            BeginInvoke(() =>
+            {
+                roThemeContainer1.SubHeader = string.IsNullOrWhiteSpace(runningGameName)
+                    ? $"v{_versionString}  |  IDLE: NO GAME RUNNING..."
+                    : $"v{_versionString}  |  ACTIVE: {runningGameName.ToUpperInvariant()}";
+            });
+        }
+
+        private void RefreshGameDropdown(string? selectGameId)
+        {
+            _isLoadingUi = true;
+            try
+            {
+                gameDropdown.Items.Clear();
+                foreach (GameProfile g in AppSettings.Current.Games)
+                    gameDropdown.Items.Add(g);
+
+                if (gameDropdown.Items.Count > 0)
+                {
+                    int targetIdx = 0;
+                    if (!string.IsNullOrWhiteSpace(selectGameId))
+                    {
+                        int found = AppSettings.Current.Games.FindIndex(g => g.Id == selectGameId);
+                        if (found >= 0) targetIdx = found;
+                    }
+                    gameDropdown.SelectedIndex = targetIdx;
+                }
+            }
+            finally
+            {
+                _isLoadingUi = false;
+            }
+
+            LoadSelectedGameIntoUi();
+        }
+
+        private void gameDropdown_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_isLoadingUi) return;
+            AppSettings.Current.ActiveGameId = ActiveGame?.Id;
+            AppSettings.Save();
+            LoadSelectedGameIntoUi();
+        }
+
+        private void LoadSelectedGameIntoUi()
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null)
+            {
+                lblSelectedGameMeta.Text = "No games loaded. Click Scan Games or Add .exe manually.";
+                launchButton1.Text = "LAUNCH GAME";
+                launchButton1.SubText = "NO GAME SELECTED";
+                grpProfiles.SubTitle = "Select a game on Dashboard to tune its engine config";
+                lblQosTitle.Text = "QoS DSCP 46 Tagging (No Active Game)";
+                return;
+            }
+
+            _isLoadingUi = true;
+            try
+            {
+                var pack = JsonProfilePackManager.FindMatchingPack(game);
+                string modeBadge = pack != null
+                    ? $"JSON Pack ({pack.GameName})"
+                    : (game.Engine == GameEngineType.UnrealEngine ? "Unreal Engine 4/5 Module" : "Universal Module");
+
+                lblSelectedGameMeta.Text = $"Exe: {game.ExecutableName}  |  Engine: {game.Engine}  |  Mode: {modeBadge}";
+                launchButton1.Text = "LAUNCH GAME";
+                launchButton1.SubText = game.Name.Length > 20 ? game.Name[..20].ToUpperInvariant() + "..." : game.Name.ToUpperInvariant();
+
+                grpProfiles.SubTitle = $"{game.Name} - {modeBadge}";
+                txtConfigDir.Text = game.ConfigDirectory;
+
+                SelectDropdownByNumericValue(fpsLimitDropdown, game.FpsLimit, 0);
+                screenModeDropdown.SelectedIndex = game.ScreenMode == 0 ? 1 : 0;
+
+                bool isUnreal = game.Engine == GameEngineType.UnrealEngine && pack == null;
+                lblLumen.Visible = lumenToggle.Visible = isUnreal;
+                lblFog.Visible = fogToggle.Visible = isUnreal;
+                lumenToggle.Checked = game.EnableLumen;
+                fogToggle.Checked = game.EnableFog;
+
+                profileDropdown.Items.Clear();
+                string[] presets = pack != null
+                    ? pack.Presets.Keys.ToArray()
+                    : (game.Engine == GameEngineType.UnrealEngine
+                        ? UnrealEngineModule.AvailablePresets
+                        : new[] { "System Optimizations Only" });
+
+                foreach (string p in presets) profileDropdown.Items.Add(p);
+
+                int idx = profileDropdown.Items.IndexOf(game.SelectedPreset);
+                profileDropdown.SelectedIndex = idx >= 0 ? idx : 0;
+
+                UpdatePresetCardTitles(presets);
+                SyncProfileCards();
+
+                gameHighPriorityToggle.Checked = game.HighPriorityIfeo;
+                gameGpuBindingToggle.Checked = game.HighPerfGpuBinding;
+                lblQosTitle.Text = $"QoS DSCP 46 Tagging for {game.ExecutableName}";
+                qosDscpToggle.Checked = game.QosDscpEnabled;
+            }
+            finally
+            {
+                _isLoadingUi = false;
+            }
+        }
+
+        private void UpdatePresetCardTitles(string[] presets)
+        {
+            var cards = new[] { cardProfCompetitive, cardProfBalanced, cardProfRecommended, cardProfUltra };
+            for (int i = 0; i < cards.Length; i++)
+            {
+                if (i < presets.Length)
+                {
+                    cards[i].Visible = true;
+                    cards[i].Title = presets[i];
+                }
+                else
+                {
+                    cards[i].Visible = false;
+                }
+            }
+        }
+
+        private void SelectPresetIndexIfValid(int index)
+        {
+            if (index >= 0 && index < profileDropdown.Items.Count)
+                profileDropdown.SelectedIndex = index;
+        }
+
+        private void SyncProfileCards()
+        {
+            cardProfCompetitive.Selected = profileDropdown.SelectedIndex == 0;
+            cardProfBalanced.Selected = profileDropdown.SelectedIndex == 1;
+            cardProfRecommended.Selected = profileDropdown.SelectedIndex == 2;
+            cardProfUltra.Selected = profileDropdown.SelectedIndex == 3;
+        }
+
+        private void btnScanGames_Click(object? sender, EventArgs e)
+        {
+            var scanned = GameScanner.ScanAllInstalledGames();
+            int added = 0;
+
+            foreach (GameProfile found in scanned)
+            {
+                bool exists = AppSettings.Current.Games.Any(g =>
+                    g.InstallDirectory.Equals(found.InstallDirectory, StringComparison.OrdinalIgnoreCase));
+
+                if (!exists)
+                {
+                    AppSettings.Current.Games.Add(found);
+                    added++;
+                }
+            }
+
+            AppSettings.Save();
+            RefreshGameDropdown(ActiveGame?.Id);
+            MessageBox.Show($"Scan complete! Found {scanned.Count} installed games ({added} newly added to library).",
+                "Game Scanner", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void btnAddManualGame_Click(object? sender, EventArgs e)
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Filter = "Game Executables (*.exe)|*.exe",
+                Title = "Select a Game Executable (e.g. Game-Win64-Shipping.exe)"
+            };
+
+            if (ofd.ShowDialog() != DialogResult.OK) return;
+
+            GameProfile manual = GameScanner.CreateManualProfile(ofd.FileName);
+            AppSettings.Current.Games.Add(manual);
+            AppSettings.Current.ActiveGameId = manual.Id;
+            AppSettings.Save();
+            RefreshGameDropdown(manual.Id);
+        }
+
+        private void btnRemoveGame_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null) return;
+
+            if (MessageBox.Show($"Remove '{game.Name}' from Overcapped Optimizer? (This does not uninstall the game.)",
+                "Remove Game", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            AppSettings.Current.Games.Remove(game);
+            AppSettings.Current.ActiveGameId = AppSettings.Current.Games.FirstOrDefault()?.Id;
+            AppSettings.Save();
+            RefreshGameDropdown(AppSettings.Current.ActiveGameId);
+        }
+
+        private void btnBrowseConfigDir_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null) return;
+
+            using var fbd = new FolderBrowserDialog
+            {
+                Description = $"Select config folder for {game.Name} (e.g. Saved\\Config\\Windows or cfg):",
+                SelectedPath = Directory.Exists(txtConfigDir.Text) ? txtConfigDir.Text : game.InstallDirectory
+            };
+
+            if (fbd.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(fbd.SelectedPath))
+            {
+                game.ConfigDirectory = fbd.SelectedPath;
+                txtConfigDir.Text = fbd.SelectedPath;
+                AppSettings.Save();
+            }
+        }
+
+        private void autoDetectBtn_Click(object? sender, EventArgs e)
+        {
+            double ramGb = HardwareDetector.GetTotalMemoryInGB();
+            double vramGb = HardwareDetector.GetGpuVramInGB();
+            double cpuGhz = HardwareDetector.GetCpuSpeedInGhz();
+
+            string recommended;
+            if (vramGb >= 12 && ramGb >= 32 && cpuGhz >= 4.0)
+                recommended = "Ultra (Maximum Visuals)";
+            else if (vramGb >= 8 && ramGb >= 16 && cpuGhz >= 3.0)
+                recommended = "Recommended (Optimized)";
+            else if (vramGb >= 4 && ramGb >= 8 && cpuGhz >= 2.5)
+                recommended = FindMatchingPresetName("Balanced");
+            else
+                recommended = FindMatchingPresetName("Performance", "Competitive");
+
+            int idx = profileDropdown.Items.IndexOf(recommended);
+            if (idx >= 0) profileDropdown.SelectedIndex = idx;
+
+            MessageBox.Show($"Based on your hardware ({vramGb:F0}GB VRAM, {ramGb:F0}GB RAM), we recommend: '{profileDropdown.Text}'.",
+                "Profile Recommendation", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string FindMatchingPresetName(params string[] prefixes)
+        {
+            foreach (object item in profileDropdown.Items)
+            {
+                string s = item.ToString() ?? string.Empty;
+                if (prefixes.Any(p => s.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    return s;
+            }
+            return profileDropdown.Items.Count > 0 ? profileDropdown.Items[0].ToString() ?? "" : "";
+        }
+
+        private void optimizeBtn_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null)
+            {
+                MessageBox.Show("Select a game on the Dashboard first.", "No Game Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            game.ConfigDirectory = txtConfigDir.Text.Trim();
+            game.SelectedPreset = profileDropdown.SelectedItem?.ToString() ?? "Recommended (Optimized)";
+            game.FpsLimit = ParseDropdownNumericValue(fpsLimitDropdown, 0);
+            game.ScreenMode = screenModeDropdown.SelectedIndex == 1 ? 0 : 1;
+            game.EnableLumen = lumenToggle.Checked;
+            game.EnableFog = fogToggle.Checked;
+            AppSettings.Save();
+
+            try
+            {
+                string summary = Optimizer.ApplyGameConfigPreset(game);
+                MessageBox.Show($"{game.Name}:\n\n{summary}", "Config Applied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ExceptionHandler.LogError(ex);
+                MessageBox.Show($"Could not apply config:\n{ex.Message}", "Config Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void btnApplyGame_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null) return;
+
+            bool needsAdmin = gameHighPriorityToggle.Checked || qosDscpToggle.Checked;
+            if (needsAdmin && !Optimizer.IsAdministrator())
+            {
+                if (MessageBox.Show("CPU High Priority and QoS DSCP 46 require Administrator privileges.\n\nRestart as Administrator now?",
+                    "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
+                {
+                    Optimizer.RestartAsAdministrator();
+                    return;
+                }
+            }
+
+            game.HighPriorityIfeo = gameHighPriorityToggle.Checked;
+            game.HighPerfGpuBinding = gameGpuBindingToggle.Checked;
+            qosDscpToggle.Checked = game.QosDscpEnabled;
+
+            AppSettings.Save();
+            Optimizer.ApplyAllPerGameOptimization(game);
+            Optimizer.SyncWatchdog();
+
+            MessageBox.Show($"Saved & applied optimizations for {game.Name} ({game.ExecutableName}).",
+                "Settings Applied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void saveBackupBtn_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null || string.IsNullOrWhiteSpace(game.ConfigDirectory) || !Directory.Exists(game.ConfigDirectory))
+            {
+                MessageBox.Show("Set a valid Config Directory for the active game first.", "Backup Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+            string safeName = string.Concat(game.Name.Split(Path.GetInvalidFileNameChars()));
+            string destDir = Path.Combine(AppSettings.Current.BackupsPath, $"{safeName}-{stamp}");
+            Directory.CreateDirectory(destDir);
+
+            int copied = 0;
+            foreach (string file in Directory.GetFiles(game.ConfigDirectory, "*.*")
+                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase)))
+            {
+                File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: true);
+                copied++;
+            }
+
+            MessageBox.Show($"Backed up {copied} config file(s) to:\n{destDir}", "Backup Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void restoreBackupBtn_Click(object? sender, EventArgs e)
+        {
+            GameProfile? game = ActiveGame;
+            if (game == null || string.IsNullOrWhiteSpace(game.ConfigDirectory) || !Directory.Exists(game.ConfigDirectory))
+            {
+                MessageBox.Show("Set a valid Config Directory for the active game first.", "Restore Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using var fbd = new FolderBrowserDialog
+            {
+                Description = "Select a backup folder to restore config files from:",
+                SelectedPath = Directory.Exists(AppSettings.Current.BackupsPath) ? AppSettings.Current.BackupsPath : Application.StartupPath
+            };
+
+            if (fbd.ShowDialog() != DialogResult.OK) return;
+
+            int restored = 0;
+            foreach (string file in Directory.GetFiles(fbd.SelectedPath, "*.*")
+                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase)))
+            {
+                File.Copy(file, Path.Combine(game.ConfigDirectory, Path.GetFileName(file)), overwrite: true);
+                restored++;
+            }
+
+            MessageBox.Show($"Restored {restored} config file(s) for {game.Name}.", "Backup Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void btnOpenPacksFolder_Click(object? sender, EventArgs e)
+        {
+            Directory.CreateDirectory(AppSettings.PacksDirectory);
+            Process.Start(new ProcessStartInfo(AppSettings.PacksDirectory) { UseShellExecute = true });
+        }
+
+        private void saveAdvancedCfgBtn_Click(object? sender, EventArgs e)
+        {
+            if (autoFlushChk.Checked && !Optimizer.IsAdministrator())
+            {
+                if (MessageBox.Show("Auto-Flush requires Administrator privileges.\n\nRestart as Administrator now?",
+                    "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
+                {
+                    AppSettings.Current.AutoFlushEnabled = true;
+                    AppSettings.Save();
+                    Optimizer.RestartAsAdministrator();
+                    return;
+                }
+                autoFlushChk.Checked = false;
+            }
+
+            AppSettings.Current.AutoPowerPlan = autoPowerPlanToggle.Checked;
+            AppSettings.Current.GameModeAndDisableDvr = gameModeDvrToggle.Checked;
+            AppSettings.Current.DisableFSO = disabledFSO.Checked;
+            AppSettings.Current.ThrottleBackgroundApps = throttleAppsToggle.Checked;
+            AppSettings.Current.AutoFlushEnabled = autoFlushChk.Checked;
+            AppSettings.Current.SmartFlushEnabled = smartFlushToggle.Checked;
+            AppSettings.Current.SmartFlushThresholdGB = (int)smartFlushThreshold.Value;
+            AppSettings.Current.AutoFlushInterval = (int)autoFlushinterval.Value;
+            AppSettings.Current.AutoFlushUnit = autoFlushMinHour.Text;
+            AppSettings.Current.AutoFlushSfx = autoFlushSound.Checked;
+            AppSettings.Current.PCoresOnly = pCoresToggle.Checked;
+
+            AppSettings.Save();
+
+            Optimizer.ApplyFSOState(AppSettings.Current.DisableFSO);
+            Optimizer.ApplyGameModeAndDvr(AppSettings.Current.GameModeAndDisableDvr);
+            Optimizer.SyncWatchdog();
+            Optimizer.InitializeAutoFlushTimer();
+
+            MessageBox.Show("Global settings saved and applied!", "Overcapped Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void flushRamToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            if (!Optimizer.IsAdministrator())
+            {
+                if (MessageBox.Show("Flushing the Windows Standby List requires Administrator privileges.\n\nRestart as Administrator now?",
+                    "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
+                {
+                    Optimizer.RestartAsAdministrator();
+                }
+                return;
+            }
+
+            Optimizer.FlushStandbyList(silent: false);
+        }
+
+        private void clearShaderCacheBtn_Click(object? sender, EventArgs e)
+        {
+            if (MessageBox.Show(
+                "This clears DirectX, NVIDIA, and AMD GPU shader caches.\n\nNote: Your first 5 minutes in-game will rebuild shaders.\n\nProceed?",
+                "Clear Shader Cache", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            var (deleted, freedMb, skipped) = Optimizer.ClearShaderCaches();
+            MessageBox.Show(
+                $"Shader cache cleanup complete!\n\n- Files deleted: {deleted}\n- Space freed: {freedMb:F2} MB\n- Active/locked files skipped: {skipped}",
+                "Shader Cache Cleared", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void btnOpenGameFolder_Click(object? sender, EventArgs e)
+        {
+            if (ActiveGame == null || !Directory.Exists(ActiveGame.InstallDirectory))
+            {
+                MessageBox.Show("No valid active game folder selected.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            Process.Start(new ProcessStartInfo(ActiveGame.InstallDirectory) { UseShellExecute = true });
+        }
+
+        private void btnApplyNetworkOptimzations_Click(object? sender, EventArgs e)
+        {
+            if (!Optimizer.IsAdministrator())
+            {
+                if (MessageBox.Show("NIC power optimizations and QoS DSCP policies require Administrator privileges.\n\nRestart as Administrator now?",
+                    "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
+                {
+                    Optimizer.RestartAsAdministrator();
+                }
+                return;
+            }
+
+            try
+            {
+                int adapters = Optimizer.ApplyNicPowerOptimization(disableNicPowerToggle.Checked);
+                AppSettings.Current.DisableNicPowerSaving = disableNicPowerToggle.Checked;
+
+                string qosNote = "No active game selected";
+                if (ActiveGame != null)
+                {
+                    ActiveGame.QosDscpEnabled = qosDscpToggle.Checked;
+                    Optimizer.ApplyQosDscpPolicy(ActiveGame.ExecutableName, qosDscpToggle.Checked);
+                    qosNote = $"{ActiveGame.ExecutableName}: {(qosDscpToggle.Checked ? "Enabled (DSCP 46)" : "Removed")}";
+                }
+
+                AppSettings.Save();
+                MessageBox.Show(
+                    $"Network optimizations applied!\n\n- Active Ethernet NICs updated: {adapters}\n- QoS Policy: {qosNote}",
+                    "Network Optimizations Applied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ExceptionHandler.LogError(ex);
+                MessageBox.Show($"Failed to apply network optimizations: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnFlushDns_Click(object? sender, EventArgs e)
+        {
+            bool ok = Optimizer.FlushDnsCache(out string output);
+            MessageBox.Show(string.IsNullOrWhiteSpace(output) ? (ok ? "DNS cache flushed." : "DNS flush failed.") : output,
+                "Flush DNS", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        }
+
+        private async void btnRunPingTest_Click(object? sender, EventArgs e)
+        {
+            if (_pingCts != null) { _pingCts.Cancel(); return; }
+
+            string target = txtServerIp.Text.Trim();
+            if (string.IsNullOrWhiteSpace(target)) return;
+
+            AppSettings.Current.LastPingServer = target;
+            AppSettings.Save();
+
+            int count = (int)pingCountNumeric.Value;
+            _pingCts = new CancellationTokenSource();
+            btnRunPingTest.Text = "Stop";
+            lblPingAvg.Text = $"Testing {target} (0/{count})...";
+            lblPingJitter.Text = "Measuring...";
+            lblPacketLoss.Text = "Measuring...";
+
+            var progress = new Progress<PingTestProgress>(p =>
+            {
+                lblPingAvg.Text = p.Sent > p.Lost
+                    ? $"{p.AvgPingMs:F1} ms  (Min: {p.MinPingMs:F0} ms | Max: {p.MaxPingMs:F0} ms)  [{p.ProbeMode}]  {p.Completed}/{p.Total}"
+                    : $"No reply yet [{p.ProbeMode}]  {p.Completed}/{p.Total}";
+
+                lblPingJitter.Text = p.Sent - p.Lost >= 2
+                    ? $"{p.JitterMs:F1} ms  ({(p.JitterMs < 5 ? "Rock Solid" : p.JitterMs < 15 ? "Good" : "Spiky / Unstable")})"
+                    : "Calculating...";
+
+                lblPacketLoss.Text = $"{p.PacketLossPercent:F1}%  ({p.Lost} lost of {p.Sent} sent)";
+                lblPacketLoss.DotColor = p.PacketLossPercent == 0 ? GUI.ROPalette.HudGreen : GUI.ROPalette.AccentCrimson;
+            });
+
+            try
+            {
+                await Optimizer.RunPingTestAsync(target, count, progress, _pingCts.Token);
+            }
+            catch (OperationCanceledException) { lblPingAvg.Text += "  (Stopped)"; }
+            catch (Exception ex) { lblPingAvg.Text = $"Error: {ex.Message}"; }
+            finally
+            {
+                _pingCts.Dispose();
+                _pingCts = null;
+                btnRunPingTest.Text = "Run Test";
+            }
+        }
+
+        private static void SelectDropdownByNumericValue(ComboBox combo, int value, int fallbackIndex)
+        {
+            string target = value == 0 ? "Unlimited (0)" : value.ToString(CultureInfo.InvariantCulture);
+            int idx = combo.Items.IndexOf(target);
+            combo.SelectedIndex = idx >= 0 ? idx : Math.Min(fallbackIndex, combo.Items.Count - 1);
+        }
+
+        private static int ParseDropdownNumericValue(ComboBox combo, int fallback)
+        {
+            string text = combo.SelectedItem?.ToString() ?? string.Empty;
+            if (text.StartsWith("Unlimited", StringComparison.OrdinalIgnoreCase)) return 0;
+            return int.TryParse(text, out int parsed) ? parsed : fallback;
+        }
+
+        private void updateToggle_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (_isLoadingUi) return;
+            AppSettings.Current.CheckForUpdates = updateToggle.Checked;
+            AppSettings.Save();
+            if (updateToggle.Checked) _ = Updates.CheckForUpdates();
+        }
+
+        private void launchButton1_Click(object? sender, EventArgs e)
+        {
+            TrayHandler.LaunchGame(ActiveGame);
+        }
+
+        private void minimizeToTrayToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            TrayHandler.HideFormToTray();
+        }
+
+        private void exitToolStripMenuItem1_Click(object? sender, EventArgs e)
+        {
+            StopFpsOverlay();
+            Close();
+        }
+
+        private void supportToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            if (MessageBox.Show("Join our Discord server for support and community profile packs?",
+                "Void Tech Studios Discord", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
+            {
+                Process.Start(new ProcessStartInfo("https://discord.gg/tfwf9Qr7rG") { UseShellExecute = true });
+            }
+        }
+
+        private void openLogFileToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            string path = ExceptionHandler.GetLogFilePath();
+            string target = File.Exists(path) ? path : Path.GetDirectoryName(path) ?? Application.StartupPath;
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+
+        private void openLogFilePathToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            string dir = Path.GetDirectoryName(ExceptionHandler.GetLogFilePath()) ?? Application.StartupPath;
+            Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+        }
+
+        private void openSettingsFilePathToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            Directory.CreateDirectory(AppSettings.DataDirectory);
+            Process.Start(new ProcessStartInfo(AppSettings.DataDirectory) { UseShellExecute = true });
+        }
+
+        private void _lnkWebsite_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            Process.Start(new ProcessStartInfo("https://voidtechstudios.us/") { UseShellExecute = true });
+        }
+
+        private void StartFpsOverlay()
+        {
+            if (_fpsOverlay == null || _fpsOverlay.IsDisposed)
+            {
+                _fpsOverlay = new FpsOverlay();
+                _fpsOverlay.CustomPositionSaved += OnFpsOverlayCustomPositionSaved;
+                _fpsOverlay.DragModeChanged += OnFpsOverlayDragModeChanged;
+            }
+
+            bool started = _fpsOverlay.StartOverlay(
+                AppSettings.Current.FpsOverlayPosition,
+                AppSettings.Current.FpsOverlayCustomX,
+                AppSettings.Current.FpsOverlayCustomY,
+                AppSettings.Current.FpsOverlayOpacity);
+
+            if (!started)
+            {
+                MessageBox.Show(
+                    "Could not start ETW FPS tracing. Make sure Overcapped Optimizer is running as Administrator.",
+                    "FPS Overlay",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        private void StopFpsOverlay()
+        {
+            if (_fpsOverlay != null)
+            {
+                _fpsOverlay.CustomPositionSaved -= OnFpsOverlayCustomPositionSaved;
+                _fpsOverlay.DragModeChanged -= OnFpsOverlayDragModeChanged;
+                if (!_fpsOverlay.IsDisposed)
+                {
+                    _fpsOverlay.StopOverlay();
+                    _fpsOverlay.Close();
+                    _fpsOverlay.Dispose();
+                }
+                _fpsOverlay = null;
+            }
+
+            btnMoveFpsOverlay.Text = "Move";
+        }
+
+        private void OnFpsOverlayCustomPositionSaved(int x, int y)
+        {
+            AppSettings.Current.FpsOverlayCustomX = x;
+            AppSettings.Current.FpsOverlayCustomY = y;
+            AppSettings.Current.FpsOverlayPosition = "Custom";
+            AppSettings.Save();
+
+            if (IsDisposed || !IsHandleCreated) return;
+
+            BeginInvoke(() =>
+            {
+                _isLoadingUi = true;
+                int customIdx = fpsPositionDropdown.Items.IndexOf("Custom");
+                if (customIdx >= 0) fpsPositionDropdown.SelectedIndex = customIdx;
+                _isLoadingUi = false;
+
+                if (_fpsOverlay == null || !_fpsOverlay.IsDragMode)
+                    btnMoveFpsOverlay.Text = "Move";
+            });
+        }
+
+        private void fpsOverlayToggle_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (_isLoadingUi) return;
+
+            if (fpsOverlayToggle.Checked)
+            {
+                if (!Optimizer.IsAdministrator())
+                {
+                    _isLoadingUi = true;
+                    fpsOverlayToggle.Checked = false;
+                    _isLoadingUi = false;
+
+                    if (MessageBox.Show(
+                        "The zero-injection ETW FPS Overlay requires Administrator privileges to read Windows DXGI frame events.\n\nRestart as Administrator now?",
+                        "Administrator Required",
+                        MessageBoxButtons.OKCancel,
+                        MessageBoxIcon.Warning) == DialogResult.OK)
+                    {
+                        AppSettings.Current.FpsOverlayEnabled = true;
+                        AppSettings.Save();
+                        Optimizer.RestartAsAdministrator();
+                    }
+                    return;
+                }
+
+                AppSettings.Current.FpsOverlayEnabled = true;
+                AppSettings.Save();
+                StartFpsOverlay();
+            }
+            else
+            {
+                AppSettings.Current.FpsOverlayEnabled = false;
+                AppSettings.Save();
+                StopFpsOverlay();
+            }
+        }
+
+        private void fpsPositionDropdown_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_isLoadingUi) return;
+
+            string selectedPos = fpsPositionDropdown.SelectedItem?.ToString() ?? "Top Left";
+            AppSettings.Current.FpsOverlayPosition = selectedPos;
+            AppSettings.Save();
+
+            if (_fpsOverlay != null && !_fpsOverlay.IsDisposed)
+            {
+                _fpsOverlay.ApplyPosition(
+                    selectedPos,
+                    AppSettings.Current.FpsOverlayCustomX,
+                    AppSettings.Current.FpsOverlayCustomY);
+            }
+        }
+
+        private void btnMoveFpsOverlay_Click(object? sender, EventArgs e)
+        {
+            if (_fpsOverlay == null || _fpsOverlay.IsDisposed || !fpsOverlayToggle.Checked)
+            {
+                MessageBox.Show(
+                    "Enable the In-Game FPS Overlay toggle first to position it.",
+                    "FPS Overlay",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!_fpsOverlay.IsDragMode)
+            {
+                _fpsOverlay.SetDragMode(true);
+                btnMoveFpsOverlay.Text = "Lock";
+            }
+            else
+            {
+                AppSettings.Current.FpsOverlayCustomX = _fpsOverlay.Left;
+                AppSettings.Current.FpsOverlayCustomY = _fpsOverlay.Top;
+                AppSettings.Current.FpsOverlayPosition = "Custom";
+                AppSettings.Save();
+
+                _fpsOverlay.SetDragMode(false);
+                btnMoveFpsOverlay.Text = "Move";
+
+                _isLoadingUi = true;
+                int customIdx = fpsPositionDropdown.Items.IndexOf("Custom");
+                if (customIdx >= 0) fpsPositionDropdown.SelectedIndex = customIdx;
+                _isLoadingUi = false;
+            }
+        }
+
+        private void OnFpsOverlayDragModeChanged(bool isDragMode)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            BeginInvoke(() => btnMoveFpsOverlay.Text = isDragMode ? "Lock" : "Move");
+        }
+
+        private void fpsOpacityDropdown_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_isLoadingUi) return;
+
+            string raw = (fpsOpacityDropdown.SelectedItem?.ToString() ?? "75%").TrimEnd('%');
+            if (int.TryParse(raw, out int percent))
+            {
+                AppSettings.Current.FpsOverlayOpacity = Math.Clamp(percent, 5, 100);
+                AppSettings.Save();
+
+                if (_fpsOverlay != null && !_fpsOverlay.IsDisposed)
+                {
+                    _fpsOverlay.ApplyOpacity(AppSettings.Current.FpsOverlayOpacity);
+                }
+            }
+        }
+    }
+}
