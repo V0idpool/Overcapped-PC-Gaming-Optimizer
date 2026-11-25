@@ -110,12 +110,12 @@ Global Windows settings and a live background auto-optimizer (polls every 5 seco
   - **1% Low Toggle:** Toggle the live `1% Low` readout on or off directly from the button next to the position dropdown.
   - **Position & Opacity:** Pick a corner preset (`Top Left`, `Top Right`, `Top Center`, `Bottom Left`, `Bottom Right`, or `Custom`) and adjust opacity directly from the dropdown.
   - **Drag & Lock:** Click **Move** to unlock the HUD, drag it anywhere across any monitor, then **right-click the overlay** (or click **Lock**) to save the exact coordinates and return to click-through mode.
-  - **Automatic Offline HTML Benchmark Reports:** Whenever you exit a game while the FPS overlay is running, Overcapped automatically saves a self-contained HTML session report to `%LocalAppData%\Overcapped Optimizer\Benchmarks\` and prompts you to open it (or pops a clickable tray notification if minimized). Reports work 100% offline with a downsampled embedded Overcapped logo and browser tab icon, and include Average FPS, 1% Low, 0.1% Low, frametime breakdown, stutter spike counts (`>33 ms` and `>50 ms`), an SVG FPS & 1% Low timeline graph, hardware snapshot, and active tweaks.
+  - **Automatic HTML Benchmark Reports:** Whenever you exit a game while the FPS overlay is running, Overcapped automatically saves a self-contained HTML session report to `%LocalAppData%\Overcapped Optimizer\Benchmarks\` and prompts you to open it (or pops a clickable tray notification if minimized). Reports work 100% offline with and include Average FPS, 1% Low, 0.1% Low, frametime breakdown, stutter spike counts (`>33 ms` and `>50 ms`), an SVG FPS & 1% Low timeline graph, hardware snapshot, and active tweaks.
   - *Note: This uses zero DLL injection or DirectX hooking.*
 - **Cache Cleaning & Utilities:**
   - **Clear DirectX / GPU Shader Cache:** Clears `%LocalAppData%\D3DSCache`, NVIDIA `DXCache` / `GLCache`, and AMD `DxCache` / `GLCache`. Good after driver updates or major game patches. *(Expect brief shader rebuild stutters during your first 5 or so minutes back in-game.)*
   - **Open Active Game Folder:** Opens the currently selected game's install directory in Explorer.
-  - **Session Benchmarks...:** Opens your saved HTML benchmark reports folder (you can also jump straight to your latest report via **Help -> Open Latest Benchmark Report...**).
+  - **Session Benchmarks...:** Opens your saved HTML benchmark reports folder (you can also jump straight to your latest report via **Help -> Open Latest Benchmark Report...**). You can also do a comparison of two reports by simply dragging another report file, into the currently open one in your browser. This helps fine tune the best settings for your rig, and figure out what settings make the biggest impact, and which don't.
 
 ---
 
@@ -250,6 +250,7 @@ Overcapped is built with C# WinForms on **.NET 8 / .NET 10** (Windows desktop ta
 ## Troubleshooting
 
 - **Back up your configs first:** Hit **Backup Configs** under **Game Profiles** before applying a preset for the first time.
+- **The FPS Counter is not displayed:** Make sure your game is in **Windowed Borderless**, **Borderless**, or **Fullscreen-Borderless** and go to the **System Optimization** tab. Toggle the **In-game FPS Overlay (Admin)** on, set the FPS Overlay settings, and show/hide 1% low information to show a minimal fps counter.
 - **Brief stutters right after clearing shader cache:** Normal. DirectX, NVIDIA, and AMD drivers need a few minutes in-game to rebuild fresh shaders.
 - **Unreal Engine config folder not auto-detected:** Launch the game once so it creates its `%LocalAppData%\<Game>\Saved\Config\Windows` folder, or use **Config Directory...** to point to it manually.
 - **No benchmark report saved after exiting a game:** Make sure the **In-Game FPS Overlay** toggle is turned on (requires Admin) before launching your game, and play for at least a few seconds so ETW captures frame data.
