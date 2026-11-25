@@ -18,7 +18,7 @@
 
 ## What Overcapped Actually Does
 
-Designed to cut down stutters and get more out of your PC without digging through Windows settings and config files by hand. Includes built-in support for Unreal Engine, Unity, and Source games, a built-in JSON Profile Pack Builder for creating and sharing custom game packs, per-game override rules, hardware health checks, and automatic offline HTML benchmark reports. Everything stays anti-cheat safe and resets cleanly when you close your game.
+Designed to cut down stutters and get more out of your PC without digging through Windows settings and config files by hand. Includes built-in support for Unreal Engine, Unity, and Source games, a built-in JSON Profile Pack Builder for creating and sharing custom game packs, per-game override rules, global hotkeys with a live dashboard opacity slider, hardware health checks, and automatic offline HTML benchmark reports. Everything stays anti-cheat safe and resets cleanly when you close your game.
 
 ---
 
@@ -27,7 +27,7 @@ Designed to cut down stutters and get more out of your PC without digging throug
 - **OS:** Windows 10 or Windows 11 (64-bit)
 - **Install:** None. Overcapped is completely portable. Grab the latest `Overcapped.zip` from [overcapped.us/downloads](https://overcapped.us/downloads), extract it to a permanent folder (Desktop, Games drive, Tools folder, etc.), and run `Overcapped Optimizer.exe`.
 - **Administrator Privileges:** You can run the app normally, but **RAM Auto-Flush**, **High CPU Priority**, **In-Game FPS Overlay**, **NIC Power Optimizations**, **Delivery Optimization Kill-Switch**, **QoS DSCP 46**, and **System Restore Points** require Administrator rights. If you toggle an Admin feature without it, the app will prompt to restart elevated for you. You can also toggle **Start as Admin** in the sidebar if you want it to always launch elevated.
-- **Standard-User Game Launches:** Even when Overcapped is running as Administrator, clicking **LAUNCH GAME** de-elevates through the Windows Explorer shell token so your games and anti-cheats launch with standard user privileges instead of inheriting Admin rights.
+- **Standard-User Game Launches:** Even when Overcapped is running as Administrator, clicking **LAUNCH GAME** de-elevates through the Windows Explorer shell token so your games and anti-cheats launch with standard user privileges instead of inheriting Admin rights. Steam and Epic games also launch through their native launcher protocols (`steam://` / `com.epicgames.launcher://`) so anti-cheats and overlays initialize cleanly.
 
 ### Where Your Files Live
 
@@ -105,12 +105,12 @@ Global Windows settings and a live background auto-optimizer (polls every 5 seco
 - **Disable Fullscreen Optimizations (FSO):** Applies Windows `GameConfigStore` overrides to cut down DWM fullscreen compositing latency.
 - **Throttle Background Apps (with Custom Edit List):** Lowers listed background apps (browsers, launchers, RGB suites, Wallpaper Engine, Spotify, Overwolf, etc.) to `BelowNormal` priority while you play, then restores their original priority when the game closes. Click **Edit List** to add processes by name, browse for `.exe`s, quick-add currently running apps, remove entries, or reset to defaults.
 - **In-Game FPS Overlay & Session Benchmarks (Admin):** A zero-injection FPS, **1% Low FPS**, and frametime (`ms`) HUD powered by native Windows ETW (`Microsoft-Windows-DXGI` and `Microsoft-Windows-D3D9` Present events).
-  - Automatically tracks whichever window is currently in the foreground.
+  - Automatically tracks whichever window is currently in the foreground, pauses telemetry and hides when you tab out of the game, and resumes seamlessly when you tab back in.
   - Color-coded readout: Green (`60+ FPS`), Amber (`30-59 FPS`), Red (`< 30 FPS`).
   - **1% Low Toggle:** Toggle the live `1% Low` readout on or off directly from the button next to the position dropdown.
   - **Position & Opacity:** Pick a corner preset (`Top Left`, `Top Right`, `Top Center`, `Bottom Left`, `Bottom Right`, or `Custom`) and adjust opacity directly from the dropdown.
   - **Drag & Lock:** Click **Move** to unlock the HUD, drag it anywhere across any monitor, then **right-click the overlay** (or click **Lock**) to save the exact coordinates and return to click-through mode.
-  - **Automatic Styled HTML Benchmark Reports:** Whenever you exit a game while the FPS overlay is running, or turn the FPS Overlay off, Overcapped automatically saves a self-contained HTML session report to `%LocalAppData%\Overcapped Optimizer\Benchmarks\` and prompts you to open it (or pops a clickable tray notification if minimized). Reports work 100% offline with an embedded Overcapped logo and include Average FPS, 1% Low, 0.1% Low, frametime breakdown, stutter spike counts (`>33 ms` and `>50 ms`), an SVG FPS & 1% Low timeline graph, hardware snapshot, and active tweaks.
+  - **Automatic Offline HTML Benchmark Reports:** Whenever you exit a game while the FPS overlay is running, Overcapped automatically saves a self-contained HTML session report to `%LocalAppData%\Overcapped Optimizer\Benchmarks\` and prompts you to open it (or pops a clickable tray notification if minimized). Reports work 100% offline with a downsampled embedded Overcapped logo and browser tab icon, and include Average FPS, 1% Low, 0.1% Low, frametime breakdown, stutter spike counts (`>33 ms` and `>50 ms`), an SVG FPS & 1% Low timeline graph, hardware snapshot, and active tweaks.
   - *Note: This uses zero DLL injection or DirectX hooking.*
 - **Cache Cleaning & Utilities:**
   - **Clear DirectX / GPU Shader Cache:** Clears `%LocalAppData%\D3DSCache`, NVIDIA `DXCache` / `GLCache`, and AMD `DxCache` / `GLCache`. Good after driver updates or major game patches. *(Expect brief shader rebuild stutters during your first 5 or so minutes back in-game.)*
@@ -145,9 +145,22 @@ Ethernet stability optimizations and real game-server diagnostics.
 
 ---
 
-### 6. System Tray, Updates & Logs
+### 6. Hotkeys
 
-- **Minimize to System Tray:** Available from the top menu bar (`Minimize to Tray`) or Dashboard Quick Actions. Keeps auto-flush, the game auto-optimizer, and the FPS overlay running quietly in the background. Right-click the tray icon to launch your active game, reopen the window, or exit cleanly (restoring all temporary tweaks).
+Bind global key combos so you can control Overcapped mid-game without Alt-Tabbing out of your match.
+
+- **Enable Global Hotkeys:** Master toggle to turn global hotkey listening on or off.
+- **Show / Hide FPS Overlay** (`Ctrl+Shift+O` default): Hides or shows the FPS HUD on demand without stopping background benchmark recording.
+- **Toggle 1% Low FPS Readout** (`Ctrl+Shift+L` default): Switches the HUD between compact FPS/ms and full 1% Low telemetry.
+- **Flush Standby RAM Now (Admin)** (`Ctrl+Shift+R` default): Silently clears Windows standby memory mid-match.
+- **Show / Minimize Overcapped Window** (`Ctrl+Shift+M` default): Toggles Overcapped open or hidden to the system tray. When opened via this hotkey, Overcapped sets `TopMost` and shows a floating opacity slider bar so you can adjust window opacity on the fly; opening normally or via the tray's **Open** menu keeps it non-topmost at full opacity without the slider.
+- **Bind / Clear / Reset Defaults:** Click **Bind**, press your combo (using `Ctrl`, `Shift`, or `Alt` is recommended), or press `Esc` to cancel.
+
+---
+
+### 7. System Tray, Updates & Logs
+
+- **Minimize to System Tray:** Available from the top menu bar (`Minimize to Tray`) or Dashboard Quick Actions. Keeps auto-flush, the game auto-optimizer, global hotkeys, and the FPS overlay running quietly in the background. Right-click the tray icon to launch your active game, reopen the window, or exit cleanly (restoring all temporary tweaks).
 - **Start as Admin & Check For Updates Toggles:** Both located in the sidebar. Toggling **Check For Updates** off and back on checks for updates right away.
 - **Logs & About:** Quick links to the site, docs, GitHub, and Discord, plus one-click buttons for opening the log file, logs folder, and AppData folder.
 
@@ -167,17 +180,17 @@ A starter `rust.json` pack is generated automatically on first launch so you hav
 ### Supported Formats & Dynamic Tokens
 
 - **`ConfigFormat`:**
-  - `"SpaceDelimited"` - writes `key "value"` (Rust, Source, Frostbite `user.cfg`)
-  - `"Ini"` - merges `key=value` under `IniSection` (supports multi-section targeting via `[SectionName]KeyName`)
-  - `"KeyValueEquals"` - flat `key=value` files without INI section headers
-  - `"Json"` - type-preserving nested JSON patching via dot-notation keys (e.g., `graphics.shadowQuality`)
+  - `"SpaceDelimited"` — writes `key "value"` (Rust, Source, Frostbite `user.cfg`)
+  - `"Ini"` — merges `key=value` under `IniSection` (supports multi-section targeting via `[SectionName]KeyName`)
+  - `"KeyValueEquals"` — flat `key=value` files without INI section headers
+  - `"Json"` — type-preserving nested JSON patching via dot-notation keys (e.g., `graphics.shadowQuality`)
 - **Dynamic Tokens:**
-  - `{AUTO_GC_BUFFER}` - scales to `1024`, `2048`, or `4096` based on total system RAM
-  - `{AUTO_VRAM_POOL}` - calculates texture streaming pool size in MB from your GPU VRAM
-  - `{FPS_LIMIT}` - pulls from your selected FPS cap in the UI
-  - `{MENU_FPS_LIMIT}` - pulls from the game's menu FPS cap
-  - `{SCREEN_MODE}` - writes `1` (Exclusive Fullscreen) or `0` (Borderless)
-  - `{NVIDIA_REFLEX}` - writes `"2"` (On + Boost) on NVIDIA GPUs and skips the key on AMD/Intel
+  - `{AUTO_GC_BUFFER}` — scales to `1024`, `2048`, or `4096` based on total system RAM
+  - `{AUTO_VRAM_POOL}` — calculates texture streaming pool size in MB from your GPU VRAM
+  - `{FPS_LIMIT}` — pulls from your selected FPS cap in the UI
+  - `{MENU_FPS_LIMIT}` — pulls from the game's menu FPS cap
+  - `{SCREEN_MODE}` — writes `1` (Exclusive Fullscreen) or `0` (Borderless)
+  - `{NVIDIA_REFLEX}` — writes `"2"` (On + Boost) on NVIDIA GPUs and skips the key on AMD/Intel
 
 ### Example Pack
 
@@ -204,3 +217,51 @@ A starter `rust.json` pack is generated automatically on first launch so you hav
     }
   }
 }
+```
+
+---
+
+## Anti-Cheat Safety
+
+Overcapped is built to stay completely outside of protected game processes so it stays safe alongside Easy Anti-Cheat (EAC), BattlEye, Riot Vanguard, Ricochet, EA Javelin, ACE, etc:
+
+- **Zero DLL injection** and **zero process memory reading/writing**.
+- **No graphics hooking**, the FPS overlay reads native Windows ETW DXGI/D3D9 Present events externally.
+- **Anti-cheat aware engine tuning** — skips Unity `*_Data\boot.config` edits automatically if EAC, BattlEye, or EA AntiCheat is detected in the game folder.
+- **De-elevated game launching** — launches games with standard user permissions via Explorer's shell token even when Overcapped is running as Admin, and launches Steam / Epic games through their native launcher protocols.
+- **Standard Windows APIs & registry policies** — IFEO CPU priority, DXGI GPU preference, Windows Power Plans, Policy QoS, Standby RAM flushing, and throttling *background* apps instead of poking the game.
+- **Security features stay untouched** — never disables TPM, Secure Boot, or VBS/HVCI.
+
+---
+
+## Building From Source
+
+Overcapped is built with C# WinForms on **.NET 8 / .NET 10** (Windows desktop target).
+
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/V0idpool/Overcapped.git](https://github.com/V0idpool/Overcapped.git)
+   ```
+2. Open the solution in **Visual Studio 2022** (or newer) with the **.NET desktop development** workload installed.
+3. Restore NuGet packages and build in `Release | x64`.
+
+---
+
+## Troubleshooting
+
+- **Back up your configs first:** Hit **Backup Configs** under **Game Profiles** before applying a preset for the first time.
+- **Brief stutters right after clearing shader cache:** Normal. DirectX, NVIDIA, and AMD drivers need a few minutes in-game to rebuild fresh shaders.
+- **Unreal Engine config folder not auto-detected:** Launch the game once so it creates its `%LocalAppData%\<Game>\Saved\Config\Windows` folder, or use **Config Directory...** to point to it manually.
+- **No benchmark report saved after exiting a game:** Make sure the **In-Game FPS Overlay** toggle is turned on (requires Admin) before launching your game, and play for at least a few seconds so ETW captures frame data.
+
+---
+
+## License & Links
+
+Released under the **GPL-3.0 License**.
+
+- **Website:** [https://overcapped.us/](https://overcapped.us/)
+- **Documentation:** [https://overcapped.us/docs](https://overcapped.us/docs)
+- **Void Tech Studios:** [https://voidtechstudios.us/](https://voidtechstudios.us/)
+- **Discord Support & Community Packs:** [https://overcapped.us/invite](https://overcapped.us/invite)
+- **Support Development:** [https://buymeacoffee.com/rustforgedev](https://buymeacoffee.com/rustforgedev)
