@@ -55,7 +55,7 @@ namespace Overcapped_Optimizer
                 Process.Start(psi);
                 return true;
             }
-            catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) // User canceled UAC prompt
+            catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {
                 ExceptionHandler.LogMessage("[Startup] UAC prompt canceled by user, continued in standard mode.");
                 return false;

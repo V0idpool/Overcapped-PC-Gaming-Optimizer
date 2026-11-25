@@ -633,5 +633,132 @@ namespace Overcapped_Optimizer.Helpers
                 return 0;
             }
         }
+
+        public static (int Width, int Height, int RefreshHz) GetPrimaryDisplayInfo()
+        {
+            try
+            {
+                for (uint devIdx = 0; devIdx < 16; devIdx++)
+                {
+                    var device = new DISPLAY_DEVICEW { cb = Marshal.SizeOf<DISPLAY_DEVICEW>() };
+                    if (!EnumDisplayDevicesW(null, devIdx, ref device, 0))
+                        break;
+
+                    if ((device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) == 0 ||
+                        (device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) == 0)
+                        continue;
+
+                    var mode = new DEVMODEW { dmSize = (ushort)Marshal.SizeOf<DEVMODEW>() };
+                    if (EnumDisplaySettingsW(device.DeviceName, ENUM_CURRENT_SETTINGS, ref mode))
+                    {
+                        return ((int)mode.dmPelsWidth, (int)mode.dmPelsHeight, (int)mode.dmDisplayFrequency);
+                    }
+                }
+            }
+            catch { }
+
+            return (0, 0, 0);
+        }
+
+        public static string GetGpuDriverVersion()
+        {
+            string bestVersion = "Unknown";
+            long maxVramBytes = 0;
+
+            try
+            {
+                using RegistryKey? classKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
+                if (classKey != null)
+                {
+                    foreach (string subKeyName in classKey.GetSubKeyNames())
+                    {
+                        if (!int.TryParse(subKeyName, out _)) continue;
+                        using RegistryKey? adapterKey = classKey.OpenSubKey(subKeyName);
+                        if (adapterKey == null) continue;
+
+                        string desc = adapterKey.GetValue("DriverDesc")?.ToString() ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(desc)) continue;
+
+                        string lowerDesc = desc.ToLowerInvariant();
+                        if (lowerDesc.Contains("virtual") || lowerDesc.Contains("remote") ||
+                            lowerDesc.Contains("microsoft basic") || lowerDesc.Contains("citrix") ||
+                            lowerDesc.Contains("mirage") || lowerDesc.Contains("spacedesk"))
+                        {
+                            continue;
+                        }
+
+                        object? memObj = adapterKey.GetValue("HardwareInformation.qwMemorySize")
+                                      ?? adapterKey.GetValue("HardwareInformation.MemorySize");
+
+                        long vramBytes = memObj != null ? ParseRegistryMemory(memObj) : 0;
+                        if (vramBytes >= maxVramBytes)
+                        {
+                            string rawVer = adapterKey.GetValue("DriverVersion")?.ToString()?.Trim() ?? string.Empty;
+                            if (string.IsNullOrWhiteSpace(rawVer)) continue;
+
+                            maxVramBytes = vramBytes;
+                            string? radeonVer = adapterKey.GetValue("RadeonSoftwareVersion")?.ToString()?.Trim();
+
+                            if (!string.IsNullOrWhiteSpace(radeonVer))
+                            {
+                                bestVersion = $"Adrenalin {radeonVer} ({rawVer})";
+                            }
+                            else if (lowerDesc.Contains("nvidia") || lowerDesc.Contains("geforce") || lowerDesc.Contains("rtx") || lowerDesc.Contains("gtx"))
+                            {
+                                string[] parts = rawVer.Split('.');
+                                if (parts.Length == 4 && parts[2].Length >= 1 && parts[3].Length == 4)
+                                {
+                                    string nvShort = $"{parts[2][^1]}{parts[3][..2]}.{parts[3][2..]}";
+                                    bestVersion = $"{nvShort} ({rawVer})";
+                                }
+                                else
+                                {
+                                    bestVersion = rawVer;
+                                }
+                            }
+                            else
+                            {
+                                bestVersion = rawVer;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return bestVersion;
+        }
+
+        public static string GetWindowsVersionString()
+        {
+            try
+            {
+                using RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                if (key != null)
+                {
+                    string product = key.GetValue("ProductName")?.ToString()?.Trim() ?? "Windows";
+                    string displayVer = key.GetValue("DisplayVersion")?.ToString()?.Trim() ?? string.Empty;
+                    string buildStr = key.GetValue("CurrentBuildNumber")?.ToString()?.Trim()
+                                   ?? key.GetValue("CurrentBuild")?.ToString()?.Trim()
+                                   ?? string.Empty;
+                    string ubr = key.GetValue("UBR")?.ToString()?.Trim() ?? string.Empty;
+
+                    if (int.TryParse(buildStr, out int buildNum) && buildNum >= 22000 &&
+                        product.Contains("Windows 10", StringComparison.OrdinalIgnoreCase))
+                    {
+                        product = product.Replace("Windows 10", "Windows 11", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    string fullBuild = !string.IsNullOrWhiteSpace(ubr) ? $"{buildStr}.{ubr}" : buildStr;
+                    string verPart = !string.IsNullOrWhiteSpace(displayVer) ? $" {displayVer}" : string.Empty;
+                    string buildPart = !string.IsNullOrWhiteSpace(fullBuild) ? $" (Build {fullBuild})" : string.Empty;
+
+                    return $"{product}{verPart}{buildPart}".Trim();
+                }
+            }
+            catch { }
+
+            return Environment.OSVersion.VersionString;
+        }
     }
 }

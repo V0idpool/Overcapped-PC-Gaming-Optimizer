@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Overcapped_Optimizer.Core;
+using Overcapped_Optimizer.Models;
 
 namespace Overcapped_Optimizer.Helpers
 {
@@ -31,7 +33,10 @@ namespace Overcapped_Optimizer.Helpers
         public double MinFps { get; init; }
         public double MaxFps { get; init; }
         public double AvgFrameTimeMs { get; init; }
+        public double FrameTimeStdDevMs { get; init; }
+        public double P95FrameTimeMs { get; init; }
         public double P99FrameTimeMs { get; init; }
+        public double P99_9FrameTimeMs { get; init; }
         public double MaxFrameTimeMs { get; init; }
         public int StutterFrames33Ms { get; init; }
         public int SevereStutterFrames50Ms { get; init; }
@@ -39,6 +44,29 @@ namespace Overcapped_Optimizer.Helpers
         public double Pct8_3To16_7Ms { get; init; }
         public double Pct16_7To33_3Ms { get; init; }
         public double PctOver33_3Ms { get; init; }
+        public int WorstDipElapsedSeconds { get; init; } = -1;
+        public double WorstDipFps { get; init; }
+        public int DisplayWidth { get; init; }
+        public int DisplayHeight { get; init; }
+        public int DisplayRefreshHz { get; init; }
+        public double PctAtOrAboveRefresh { get; init; }
+        public double TotalRamGb { get; init; }
+        public double MinFreeRamGb { get; init; }
+        public double PeakUsedRamGb { get; init; }
+        public int RamFlushCount { get; init; }
+        public List<int> RamFlushSeconds { get; init; } = new();
+        public bool HasGameProfile { get; init; }
+        public bool EffectiveMonitorGame { get; init; }
+        public bool EffectivePCoresOnly { get; init; }
+        public bool EffectiveAutoPowerPlan { get; init; }
+        public bool EffectiveThrottleApps { get; init; }
+        public bool HighPriorityIfeo { get; init; }
+        public bool HighPerfGpuBinding { get; init; }
+        public bool QosDscpEnabled { get; init; }
+        public int ConfiguredFpsLimit { get; init; }
+        public int ConfiguredScreenMode { get; init; }
+        public string LaunchArguments { get; init; } = string.Empty;
+
         public List<FpsTimelinePoint> Timeline { get; init; } = new();
     }
 
@@ -78,10 +106,36 @@ namespace Overcapped_Optimizer.Helpers
         private long _sessionStartEventTick;
         private long _sessionLastEventTick;
         private int _sessionTotalFrames;
+        private bool _isSessionPaused;
+        private DateTime? _pauseStartedUtc;
+        private TimeSpan _totalPausedDuration;
+        private long _pauseStartedTick;
+        private long _totalPausedTicks;
+        private int _sessionDisplayW;
+        private int _sessionDisplayH;
+        private int _sessionDisplayHz;
+        private double _sessionTotalRamGb;
+        private double _sessionMinFreeRamGb = double.MaxValue;
+        private double _sessionPeakUsedRamGb;
+        private int _sessionRamFlushCount;
+        private readonly List<int> _sessionRamFlushSeconds = new();
+        private bool _sessionHasProfile;
+        private bool _sessionMonitorGame;
+        private bool _sessionPCores;
+        private bool _sessionPowerPlan;
+        private bool _sessionThrottleApps;
+        private bool _sessionIfeoPrio;
+        private bool _sessionGpuBind;
+        private bool _sessionQosDscp;
+        private int _sessionFpsLimit;
+        private int _sessionScreenMode;
+        private string _sessionLaunchArgs = string.Empty;
+
         private readonly List<float> _sessionFrameTimesMs = new();
         private readonly List<double> _bucketFrameTimesMs = new();
         private int _currentBucketSecond;
         private readonly List<FpsTimelinePoint> _sessionTimeline = new();
+
         public bool IsRunning => _running;
         public bool HasActiveSession => Volatile.Read(ref _sessionPid) > 0;
         public int ActiveSessionPid => Volatile.Read(ref _sessionPid);
@@ -105,9 +159,19 @@ namespace Overcapped_Optimizer.Helpers
             }
         }
 
-        public void BeginSession(string gameName, string executableName, string processName, string presetName, string engineName, int pid)
+        public void BeginSession(
+            string gameName,
+            string executableName,
+            string processName,
+            string presetName,
+            string engineName,
+            int pid,
+            GameProfile? gameProfile = null)
         {
             if (pid <= 0) return;
+
+            var (dispW, dispH, dispHz) = HardwareDetector.GetPrimaryDisplayInfo();
+            double totalRamGb = HardwareDetector.GetTotalMemoryInGB();
 
             lock (_sessionLock)
             {
@@ -126,25 +190,169 @@ namespace Overcapped_Optimizer.Helpers
                 _bucketFrameTimesMs.Clear();
                 _sessionTimeline.Clear();
                 _currentBucketSecond = 0;
+                _isSessionPaused = false;
+                _pauseStartedUtc = null;
+                _totalPausedDuration = TimeSpan.Zero;
+                _pauseStartedTick = 0;
+                _totalPausedTicks = 0;
+
+                _sessionDisplayW = dispW;
+                _sessionDisplayH = dispH;
+                _sessionDisplayHz = dispHz;
+                _sessionTotalRamGb = totalRamGb;
+                _sessionMinFreeRamGb = double.MaxValue;
+                _sessionPeakUsedRamGb = 0;
+                _sessionRamFlushCount = 0;
+                _sessionRamFlushSeconds.Clear();
+
+                if (gameProfile != null)
+                {
+                    _sessionHasProfile = true;
+                    _sessionMonitorGame = gameProfile.MonitorGame;
+                    _sessionPCores = gameProfile.MonitorGame &&
+                        GameProfile.ResolveAutoOptimize(gameProfile.PCoresOverride, AppSettings.Current.PCoresOnly);
+                    _sessionPowerPlan = gameProfile.MonitorGame &&
+                        GameProfile.ResolveAutoOptimize(gameProfile.AutoPowerPlanOverride, AppSettings.Current.AutoPowerPlan);
+                    _sessionThrottleApps = gameProfile.MonitorGame &&
+                        GameProfile.ResolveAutoOptimize(gameProfile.ThrottleAppsOverride, AppSettings.Current.ThrottleBackgroundApps);
+                    _sessionIfeoPrio = gameProfile.HighPriorityIfeo;
+                    _sessionGpuBind = gameProfile.HighPerfGpuBinding;
+                    _sessionQosDscp = gameProfile.QosDscpEnabled;
+                    _sessionFpsLimit = gameProfile.FpsLimit;
+                    _sessionScreenMode = gameProfile.ScreenMode;
+                    _sessionLaunchArgs = gameProfile.LaunchArguments ?? string.Empty;
+                }
+                else
+                {
+                    _sessionHasProfile = false;
+                    _sessionMonitorGame = false;
+                    _sessionPCores = AppSettings.Current.PCoresOnly;
+                    _sessionPowerPlan = AppSettings.Current.AutoPowerPlan;
+                    _sessionThrottleApps = AppSettings.Current.ThrottleBackgroundApps;
+                    _sessionIfeoPrio = false;
+                    _sessionGpuBind = false;
+                    _sessionQosDscp = false;
+                    _sessionFpsLimit = 0;
+                    _sessionScreenMode = 1;
+                    _sessionLaunchArgs = string.Empty;
+                }
+
                 Volatile.Write(ref _sessionPid, pid);
             }
 
             ExceptionHandler.LogMessage($"[Benchmark] Started session recording for {gameName} (PID {pid}).");
         }
 
+        public void RecordRamSample(double availPhysGb)
+        {
+            if (availPhysGb <= 0) return;
+
+            lock (_sessionLock)
+            {
+                if (_sessionPid <= 0 || _isSessionPaused) return;
+
+                if (availPhysGb < _sessionMinFreeRamGb)
+                    _sessionMinFreeRamGb = availPhysGb;
+
+                if (_sessionTotalRamGb > 0)
+                {
+                    double usedGb = Math.Max(0, _sessionTotalRamGb - availPhysGb);
+                    if (usedGb > _sessionPeakUsedRamGb)
+                        _sessionPeakUsedRamGb = usedGb;
+                }
+            }
+        }
+
+        private void OnStandbyListFlushed()
+        {
+            lock (_sessionLock)
+            {
+                if (_sessionPid <= 0 || _isSessionPaused) return;
+
+                _sessionRamFlushCount++;
+                if (_sessionStartEventTick > 0)
+                {
+                    long activeTicks = Math.Max(0, (Stopwatch.GetTimestamp() - _sessionStartEventTick) - _totalPausedTicks);
+                    int elapsedSec = (int)(activeTicks / Stopwatch.Frequency);
+                    _sessionRamFlushSeconds.Add(elapsedSec);
+                }
+            }
+        }
+
+        public void SetSessionPaused(bool paused)
+        {
+            bool clearHudFrames = false;
+
+            lock (_sessionLock)
+            {
+                if (_sessionPid <= 0 || _isSessionPaused == paused)
+                    return;
+
+                _isSessionPaused = paused;
+
+                if (paused)
+                {
+                    FlushCurrentTimelineBucketLocked();
+                    _pauseStartedUtc = DateTime.UtcNow;
+                    _pauseStartedTick = Stopwatch.GetTimestamp();
+                    _sessionLastEventTick = 0;
+                    clearHudFrames = true;
+                }
+                else
+                {
+                    if (_pauseStartedUtc.HasValue)
+                    {
+                        _totalPausedDuration += DateTime.UtcNow - _pauseStartedUtc.Value;
+                        _pauseStartedUtc = null;
+                    }
+
+                    if (_pauseStartedTick > 0)
+                    {
+                        if (_sessionStartEventTick > 0)
+                        {
+                            _totalPausedTicks += Math.Max(0, Stopwatch.GetTimestamp() - _pauseStartedTick);
+                        }
+                        _pauseStartedTick = 0;
+                    }
+
+                    _sessionLastEventTick = 0;
+                }
+            }
+
+            if (clearHudFrames)
+            {
+                lock (_frameLock)
+                {
+                    _frameEventTicks.Clear();
+                    _recentFrameTimes.Clear();
+                    _lastEventTick = 0;
+                    _lastWallTick = 0;
+                }
+            }
+        }
+
         public FpsSessionSummary? EndSession()
         {
             List<float> samples;
             List<FpsTimelinePoint> timeline;
-            string gameName, exeName, presetName, engineName;
+            List<int> flushSeconds;
+            string gameName, exeName, presetName, engineName, launchArgs;
             DateTime startedAt;
             DateTime endedAt = DateTime.Now;
-            int totalFrames;
+            TimeSpan pausedDuration;
+            int totalFrames, dispW, dispH, dispHz, flushCount, fpsLimit, screenMode;
+            double totalRamGb, minFreeRamGb, peakUsedRamGb;
+            bool hasProfile, monGame, pCores, powerPlan, throttle, ifeoPrio, gpuBind, qosDscp;
 
             lock (_sessionLock)
             {
                 if (_sessionPid <= 0) return null;
                 Volatile.Write(ref _sessionPid, 0);
+
+                if (_isSessionPaused && _pauseStartedUtc.HasValue)
+                {
+                    _totalPausedDuration += DateTime.UtcNow - _pauseStartedUtc.Value;
+                }
 
                 FlushCurrentTimelineBucketLocked();
 
@@ -153,35 +361,86 @@ namespace Overcapped_Optimizer.Helpers
                 presetName = _sessionPreset;
                 engineName = _sessionEngine;
                 startedAt = _sessionStartedAt;
+                pausedDuration = _totalPausedDuration;
                 totalFrames = _sessionTotalFrames;
                 samples = new List<float>(_sessionFrameTimesMs);
                 timeline = new List<FpsTimelinePoint>(_sessionTimeline);
+
+                dispW = _sessionDisplayW;
+                dispH = _sessionDisplayH;
+                dispHz = _sessionDisplayHz;
+                totalRamGb = _sessionTotalRamGb;
+                minFreeRamGb = _sessionMinFreeRamGb == double.MaxValue ? 0 : _sessionMinFreeRamGb;
+                peakUsedRamGb = _sessionPeakUsedRamGb;
+                flushCount = _sessionRamFlushCount;
+                flushSeconds = new List<int>(_sessionRamFlushSeconds);
+
+                hasProfile = _sessionHasProfile;
+                monGame = _sessionMonitorGame;
+                pCores = _sessionPCores;
+                powerPlan = _sessionPowerPlan;
+                throttle = _sessionThrottleApps;
+                ifeoPrio = _sessionIfeoPrio;
+                gpuBind = _sessionGpuBind;
+                qosDscp = _sessionQosDscp;
+                fpsLimit = _sessionFpsLimit;
+                screenMode = _sessionScreenMode;
+                launchArgs = _sessionLaunchArgs;
 
                 _sessionProcessName = string.Empty;
                 _sessionFrameTimesMs.Clear();
                 _bucketFrameTimesMs.Clear();
                 _sessionTimeline.Clear();
+                _sessionRamFlushSeconds.Clear();
                 _sessionStartEventTick = 0;
                 _sessionLastEventTick = 0;
                 _sessionTotalFrames = 0;
+                _isSessionPaused = false;
+                _pauseStartedUtc = null;
+                _totalPausedDuration = TimeSpan.Zero;
+                _pauseStartedTick = 0;
+                _totalPausedTicks = 0;
             }
 
-            TimeSpan duration = endedAt - startedAt;
+            TimeSpan duration = (endedAt - startedAt) - pausedDuration;
+            if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
+
             if (samples.Count < 60 || duration.TotalSeconds < 5.0)
             {
                 ExceptionHandler.LogMessage($"[Benchmark] Skipped report for {gameName}: {samples.Count} frame samples over {duration.TotalSeconds:F1}s.");
                 return null;
             }
 
+            int worstDipSec = -1;
+            double worstDipFps = 0;
+            if (timeline.Count > 0)
+            {
+                FpsTimelinePoint? worst = timeline
+                    .Where(p => p.OnePercentLowFps > 0)
+                    .OrderBy(p => p.OnePercentLowFps)
+                    .FirstOrDefault();
+
+                if (worst != null)
+                {
+                    worstDipSec = worst.ElapsedSeconds;
+                    worstDipFps = worst.OnePercentLowFps;
+                }
+            }
+
             double sumMs = 0;
             int stutter33 = 0;
             int stutter50 = 0;
             int under8_3 = 0, between8_3And16_7 = 0, between16_7And33_3 = 0, over33_3 = 0;
+            double refreshTargetMs = dispHz > 0 ? (1000.0 / dispHz) * 1.02 : 0;
+            int atOrAboveRefresh = 0;
 
             for (int i = 0; i < samples.Count; i++)
             {
                 float ms = samples[i];
                 sumMs += ms;
+
+                if (refreshTargetMs > 0 && ms <= refreshTargetMs)
+                    atOrAboveRefresh++;
 
                 if (ms < 8.333f) under8_3++;
                 else if (ms < 16.667f) between8_3And16_7++;
@@ -194,14 +453,25 @@ namespace Overcapped_Optimizer.Helpers
                 }
             }
 
-            samples.Sort();
             int n = samples.Count;
-
             double avgMs = sumMs / n;
+
+            double sumSqDiff = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double diff = samples[i] - avgMs;
+                sumSqDiff += diff * diff;
+            }
+            double stdDevMs = Math.Sqrt(sumSqDiff / n);
+
+            samples.Sort();
+
             double medianMs = samples[n / 2];
             double minMs = samples[0];
             double maxMs = samples[n - 1];
+            double p95Ms = samples[Math.Min(n - 1, (int)(n * 0.95))];
             double p99Ms = samples[Math.Min(n - 1, (int)(n * 0.99))];
+            double p99_9Ms = samples[Math.Min(n - 1, (int)(n * 0.999))];
 
             double onePercentLowFps = CalculateLowPercentileFps(samples, 0.01);
             double pointOnePercentLowFps = CalculateLowPercentileFps(samples, 0.001);
@@ -223,7 +493,10 @@ namespace Overcapped_Optimizer.Helpers
                 MinFps = maxMs > 0 ? 1000.0 / maxMs : 0,
                 MaxFps = minMs > 0 ? 1000.0 / minMs : 0,
                 AvgFrameTimeMs = avgMs,
+                FrameTimeStdDevMs = stdDevMs,
+                P95FrameTimeMs = p95Ms,
                 P99FrameTimeMs = p99Ms,
+                P99_9FrameTimeMs = p99_9Ms,
                 MaxFrameTimeMs = maxMs,
                 StutterFrames33Ms = stutter33,
                 SevereStutterFrames50Ms = stutter50,
@@ -231,6 +504,28 @@ namespace Overcapped_Optimizer.Helpers
                 Pct8_3To16_7Ms = (between8_3And16_7 * 100.0) / n,
                 Pct16_7To33_3Ms = (between16_7And33_3 * 100.0) / n,
                 PctOver33_3Ms = (over33_3 * 100.0) / n,
+                WorstDipElapsedSeconds = worstDipSec,
+                WorstDipFps = worstDipFps,
+                DisplayWidth = dispW,
+                DisplayHeight = dispH,
+                DisplayRefreshHz = dispHz,
+                PctAtOrAboveRefresh = refreshTargetMs > 0 ? (atOrAboveRefresh * 100.0) / n : 0,
+                TotalRamGb = totalRamGb,
+                MinFreeRamGb = minFreeRamGb,
+                PeakUsedRamGb = peakUsedRamGb,
+                RamFlushCount = flushCount,
+                RamFlushSeconds = flushSeconds,
+                HasGameProfile = hasProfile,
+                EffectiveMonitorGame = monGame,
+                EffectivePCoresOnly = pCores,
+                EffectiveAutoPowerPlan = powerPlan,
+                EffectiveThrottleApps = throttle,
+                HighPriorityIfeo = ifeoPrio,
+                HighPerfGpuBinding = gpuBind,
+                QosDscpEnabled = qosDscp,
+                ConfiguredFpsLimit = fpsLimit,
+                ConfiguredScreenMode = screenMode,
+                LaunchArguments = launchArgs,
                 Timeline = DownsampleTimeline(timeline, 180)
             };
         }
@@ -351,6 +646,9 @@ namespace Overcapped_Optimizer.Helpers
                     return false;
                 }
 
+                Optimizer.StandbyListFlushed -= OnStandbyListFlushed;
+                Optimizer.StandbyListFlushed += OnStandbyListFlushed;
+
                 _running = true;
                 _traceThread = new Thread(TraceLoop)
                 {
@@ -433,12 +731,15 @@ namespace Overcapped_Optimizer.Helpers
             {
                 lock (_sessionLock)
                 {
-                    if (_sessionPid > 0 && eventPid == (uint)_sessionPid)
+                    if (_sessionPid > 0 && eventPid == (uint)_sessionPid && !_isSessionPaused)
                     {
                         _sessionTotalFrames++;
 
                         if (_sessionStartEventTick == 0)
+                        {
                             _sessionStartEventTick = eventTs;
+                            _totalPausedTicks = 0;
+                        }
 
                         if (_sessionLastEventTick > 0 && eventTs > _sessionLastEventTick)
                         {
@@ -448,7 +749,8 @@ namespace Overcapped_Optimizer.Helpers
                                 if (_sessionFrameTimesMs.Count < MaxStoredSessionFrames)
                                     _sessionFrameTimesMs.Add((float)dtMs);
 
-                                int elapsedSec = (int)Math.Max(0, (eventTs - _sessionStartEventTick) / Stopwatch.Frequency);
+                                long activeTicks = Math.Max(0, (eventTs - _sessionStartEventTick) - _totalPausedTicks);
+                                int elapsedSec = (int)(activeTicks / Stopwatch.Frequency);
                                 if (elapsedSec > _currentBucketSecond)
                                 {
                                     FlushCurrentTimelineBucketLocked();
@@ -547,6 +849,16 @@ namespace Overcapped_Optimizer.Helpers
         {
             _running = false;
             Volatile.Write(ref _sessionPid, 0);
+            Optimizer.StandbyListFlushed -= OnStandbyListFlushed;
+
+            lock (_sessionLock)
+            {
+                _isSessionPaused = false;
+                _pauseStartedUtc = null;
+                _totalPausedDuration = TimeSpan.Zero;
+                _pauseStartedTick = 0;
+                _totalPausedTicks = 0;
+            }
 
             if (_traceHandle != InvalidTraceHandle)
             {

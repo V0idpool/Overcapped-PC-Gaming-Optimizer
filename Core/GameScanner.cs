@@ -112,8 +112,8 @@ namespace Overcapped_Optimizer.Core
 
                         string fullInstallDir = Path.Combine(steamApps, "common", installDirName);
                         if (!Directory.Exists(fullInstallDir)) continue;
-
-                        results.Add(BuildGameProfile(name, fullInstallDir, GameLauncherSource.Steam, null));
+                        string appId = MatchVdfValue(acf, "appid");
+                        results.Add(BuildGameProfile(name, fullInstallDir, GameLauncherSource.Steam, null, appId));
                     }
                     catch (Exception ex)
                     {
@@ -154,8 +154,8 @@ namespace Overcapped_Optimizer.Core
                     string? launchExe = !string.IsNullOrWhiteSpace(launchRel)
                         ? Path.Combine(installDir, launchRel)
                         : null;
-
-                    results.Add(BuildGameProfile(name, installDir, GameLauncherSource.Epic, launchExe));
+                    string? appName = root.TryGetProperty("AppName", out JsonElement app) ? app.GetString() : null;
+                    results.Add(BuildGameProfile(name, installDir, GameLauncherSource.Epic, launchExe, appName));
                 }
                 catch (Exception ex)
                 {
@@ -484,7 +484,7 @@ namespace Overcapped_Optimizer.Core
             return IgnoredLauncherAppNames.Any(n => name.Contains(n, StringComparison.OrdinalIgnoreCase));
         }
 
-        private static GameProfile BuildGameProfile(string name, string installDir, GameLauncherSource launcher, string? explicitExePath)
+        private static GameProfile BuildGameProfile(string name, string installDir, GameLauncherSource launcher, string? explicitExePath, string? launcherAppId = null)
         {
             GameEngineType engine = DetectEngine(installDir);
             (string targetExe, string launchExe) = ResolveExecutables(installDir, engine, explicitExePath);
@@ -495,6 +495,7 @@ namespace Overcapped_Optimizer.Core
                 Name = name,
                 InstallDirectory = installDir,
                 Launcher = launcher,
+                LauncherAppId = launcherAppId ?? string.Empty,
                 Engine = engine,
                 ExecutablePath = targetExe,
                 ExecutableName = string.IsNullOrEmpty(targetExe) ? string.Empty : Path.GetFileName(targetExe),
@@ -769,7 +770,7 @@ namespace Overcapped_Optimizer.Core
             return IgnoredExeKeywords.Any(k => file.Contains(k, StringComparison.OrdinalIgnoreCase));
         }
 
-        private static string? GetSteamInstallPath()
+        public static string? GetSteamInstallPath()
         {
             using RegistryKey? key64 = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Valve\Steam");
             if (key64?.GetValue("InstallPath") is string path64 && !string.IsNullOrWhiteSpace(path64))
@@ -786,6 +787,35 @@ namespace Overcapped_Optimizer.Core
         {
             Match m = Regex.Match(content, $"\"{Regex.Escape(key)}\"\\s+\"([^\"]+)\"", RegexOptions.IgnoreCase);
             return m.Success ? m.Groups[1].Value : string.Empty;
+        }
+
+        public static string? TryResolveSteamAppId(string installDir)
+        {
+            if (string.IsNullOrWhiteSpace(installDir)) return null;
+
+            try
+            {
+                string trimmed = installDir.TrimEnd('\\', '/');
+                string folderName = Path.GetFileName(trimmed);
+                DirectoryInfo? commonDir = Directory.GetParent(trimmed);
+                DirectoryInfo? steamAppsDir = commonDir?.Parent;
+
+                if (steamAppsDir == null || !steamAppsDir.Exists) return null;
+
+                foreach (string acfFile in Directory.GetFiles(steamAppsDir.FullName, "appmanifest_*.acf"))
+                {
+                    string acf = File.ReadAllText(acfFile);
+                    string installDirName = MatchVdfValue(acf, "installdir");
+                    if (installDirName.Equals(folderName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string appId = MatchVdfValue(acf, "appid");
+                        if (!string.IsNullOrWhiteSpace(appId)) return appId;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
         }
     }
 }

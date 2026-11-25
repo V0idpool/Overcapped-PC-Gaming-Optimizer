@@ -93,6 +93,7 @@ namespace Overcapped_Optimizer.Helpers
         {
             if (MainFrm.Instance == null || MainFrm.Instance.sysTrayIcon == null) return;
 
+            MainFrm.Instance.ExitHotkeyOverlayMode();
             MainFrm.Instance.Hide();
             MainFrm.Instance.ShowInTaskbar = false;
             MainFrm.Instance.sysTrayIcon.Visible = true;
@@ -106,12 +107,14 @@ namespace Overcapped_Optimizer.Helpers
         {
             if (MainFrm.Instance == null) return;
 
+            MainFrm.Instance.ExitHotkeyOverlayMode();
             MainFrm.Instance.Show();
             MainFrm.Instance.WindowState = FormWindowState.Normal;
             MainFrm.Instance.ShowInTaskbar = true;
             if (MainFrm.Instance.sysTrayIcon != null)
                 MainFrm.Instance.sysTrayIcon.Visible = false;
             MainFrm.Instance.BringToFront();
+            MainFrm.Instance.Activate();
         }
 
         public static void LaunchGame(GameProfile? game)
@@ -129,18 +132,57 @@ namespace Overcapped_Optimizer.Helpers
                 return;
             }
 
-            string exeToLaunch = !string.IsNullOrWhiteSpace(game.LaunchExecutablePath) && File.Exists(game.LaunchExecutablePath)
-                ? game.LaunchExecutablePath
-                : game.ExecutablePath;
-
-            if (string.IsNullOrWhiteSpace(exeToLaunch) || !File.Exists(exeToLaunch))
-            {
-                MessageBox.Show($"Could not find executable for {game.Name}:\n{exeToLaunch}", "Executable Not Found", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
             try
             {
+                if (game.Launcher == GameLauncherSource.Steam)
+                {
+                    string? appId = !string.IsNullOrWhiteSpace(game.LauncherAppId)
+                        ? game.LauncherAppId
+                        : GameScanner.TryResolveSteamAppId(game.InstallDirectory);
+
+                    if (!string.IsNullOrWhiteSpace(appId))
+                    {
+                        if (string.IsNullOrWhiteSpace(game.LauncherAppId))
+                        {
+                            game.LauncherAppId = appId;
+                            AppSettings.Save();
+                        }
+
+                        string args = game.LaunchArguments?.Trim() ?? string.Empty;
+                        if (!string.IsNullOrEmpty(args))
+                        {
+                            string? steamDir = GameScanner.GetSteamInstallPath();
+                            string steamExe = !string.IsNullOrWhiteSpace(steamDir) ? Path.Combine(steamDir, "steam.exe") : string.Empty;
+
+                            if (File.Exists(steamExe))
+                            {
+                                LaunchProcessStandardUser(steamExe, steamDir, $"-applaunch {appId} {args}");
+                                return;
+                            }
+                        }
+
+                        LaunchProcessStandardUser($"steam://rungameid/{appId}");
+                        return;
+                    }
+                }
+
+                if (game.Launcher == GameLauncherSource.Epic && !string.IsNullOrWhiteSpace(game.LauncherAppId))
+                {
+                    string epicUri = $"com.epicgames.launcher://apps/{Uri.EscapeDataString(game.LauncherAppId)}?action=launch&silent=true";
+                    LaunchProcessStandardUser(epicUri);
+                    return;
+                }
+
+                string exeToLaunch = !string.IsNullOrWhiteSpace(game.LaunchExecutablePath) && File.Exists(game.LaunchExecutablePath)
+                    ? game.LaunchExecutablePath
+                    : game.ExecutablePath;
+
+                if (string.IsNullOrWhiteSpace(exeToLaunch) || !File.Exists(exeToLaunch))
+                {
+                    MessageBox.Show($"Could not find executable for {game.Name}:\n{exeToLaunch}", "Executable Not Found", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 string workingDir = Path.GetDirectoryName(exeToLaunch) ?? game.InstallDirectory;
                 LaunchProcessStandardUser(exeToLaunch, workingDir, game.LaunchArguments);
             }

@@ -116,6 +116,7 @@ namespace Overcapped_Optimizer.Core
 
         public static event Action<string?>? ActiveGameChanged;
         public static event Action<GameProfile?, int>? ActiveGameSessionChanged;
+        public static event Action? StandbyListFlushed;
 
         public static bool IsAdministrator()
         {
@@ -903,7 +904,7 @@ namespace Overcapped_Optimizer.Core
                     NtSetSystemInformation(SystemMemoryListInformation, pCommand, sizeof(int));
                 }
                 finally { Marshal.FreeHGlobal(pCommand); }
-
+                StandbyListFlushed?.Invoke();
                 PlayFlushSound();
 
                 if (!silent)

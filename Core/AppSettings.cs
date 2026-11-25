@@ -37,6 +37,12 @@ namespace Overcapped_Optimizer.Core
         public bool CheckForUpdates { get; set; } = true;
         public List<GameProfile> Games { get; set; } = new();
         public bool StartAsAdmin { get; set; } = false;
+        public bool HotkeysEnabled { get; set; } = true;
+        public string HotkeyToggleFpsOverlay { get; set; } = "Ctrl+Shift+O";
+        public string HotkeyToggle1PercentLow { get; set; } = "Ctrl+Shift+L";
+        public string HotkeyFlushRam { get; set; } = "Ctrl+Shift+R";
+        public string HotkeyToggleWindow { get; set; } = "Ctrl+Shift+M";
+        public int DashboardOverlayOpacity { get; set; } = 85;
     }
 
     public static class AppSettings

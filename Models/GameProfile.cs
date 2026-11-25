@@ -54,6 +54,7 @@ namespace Overcapped_Optimizer.Models
         public int FpsLimit { get; set; } = 0;
         public int MenuFpsLimit { get; set; } = 60;
         public int ScreenMode { get; set; } = 1;
+        public string LauncherAppId { get; set; } = string.Empty;
 
         public string ProcessNameWithoutExtension =>
             string.IsNullOrWhiteSpace(ExecutableName)
