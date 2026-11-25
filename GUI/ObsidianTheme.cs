@@ -775,7 +775,6 @@ namespace Overcapped_Optimizer.GUI
             using (LinearGradientBrush bg = new(rect, Color.FromArgb(20, 20, 27), ROPalette.SurfaceInput, 90f))
                 g.FillPath(bg, path);
 
-            // Tall card mode (>= 52px) uses a top accent bar; compact bar mode uses a left vertical bar
             bool cardMode = Height >= 52;
             GraphicsState st = g.Save();
             g.SetClip(path);
@@ -1450,7 +1449,6 @@ namespace Overcapped_Optimizer.GUI
         }
     }
 
-    // Backward-compatible aliases
     public class ROButton : ROModernButton { }
     public class NSModernButton : ROModernButton { }
     public class ROSeperator : ROSeparator { }

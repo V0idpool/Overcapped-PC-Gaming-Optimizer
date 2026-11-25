@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Overcapped_Optimizer.Core;
 using Overcapped_Optimizer.Helpers;
 using Overcapped_Optimizer.Models;
@@ -15,7 +16,7 @@ namespace Overcapped_Optimizer.Core
         public string PackId { get; set; } = string.Empty;
         public string GameName { get; set; } = string.Empty;
         public string MatchExecutable { get; set; } = string.Empty;
-        public string ConfigFormat { get; set; } = "SpaceDelimited"; // "SpaceDelimited" or "Ini"
+        public string ConfigFormat { get; set; } = "SpaceDelimited";
         public string RelativeConfigPath { get; set; } = string.Empty;
         public string IniSection { get; set; } = "SystemSettings";
         public Dictionary<string, string> UniversalSettings { get; set; } = new();
@@ -24,6 +25,24 @@ namespace Overcapped_Optimizer.Core
 
     public static class JsonProfilePackManager
     {
+        public static readonly string[] SupportedConfigFormats =
+        {
+            "SpaceDelimited",
+            "Ini",
+            "KeyValueEquals",
+            "Json"
+        };
+
+        public static readonly string[] DynamicTokens =
+        {
+            "{AUTO_GC_BUFFER}",
+            "{AUTO_VRAM_POOL}",
+            "{FPS_LIMIT}",
+            "{MENU_FPS_LIMIT}",
+            "{SCREEN_MODE}",
+            "{NVIDIA_REFLEX}"
+        };
+
         private static readonly List<GameProfilePack> LoadedPacks = new();
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -55,6 +74,8 @@ namespace Overcapped_Optimizer.Core
                         if (pack != null && !string.IsNullOrWhiteSpace(pack.PackId) &&
                             !LoadedPacks.Any(p => p.PackId.Equals(pack.PackId, StringComparison.OrdinalIgnoreCase)))
                         {
+                            pack.UniversalSettings ??= new Dictionary<string, string>();
+                            pack.Presets ??= new Dictionary<string, Dictionary<string, string>>();
                             LoadedPacks.Add(pack);
                         }
                     }
@@ -69,18 +90,305 @@ namespace Overcapped_Optimizer.Core
         public static GameProfilePack? FindMatchingPack(GameProfile game)
         {
             if (!string.IsNullOrWhiteSpace(game.JsonPackId))
-                return LoadedPacks.FirstOrDefault(p => p.PackId.Equals(game.JsonPackId, StringComparison.OrdinalIgnoreCase));
+            {
+                var byId = LoadedPacks.FirstOrDefault(p => p.PackId.Equals(game.JsonPackId, StringComparison.OrdinalIgnoreCase));
+                if (byId != null) return byId;
+            }
 
             return LoadedPacks.FirstOrDefault(p =>
                 !string.IsNullOrWhiteSpace(p.MatchExecutable) &&
                 p.MatchExecutable.Equals(game.ExecutableName, StringComparison.OrdinalIgnoreCase));
         }
 
+        public static string ResolvePackConfigPath(GameProfile game, GameProfilePack pack)
+        {
+            if (!string.IsNullOrWhiteSpace(pack.RelativeConfigPath))
+            {
+                string raw = pack.RelativeConfigPath.Trim();
+                string myDocs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                string localLow = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
+
+                string expanded = raw
+                    .Replace("{DOCUMENTS}", myDocs, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{LOCALLOW}", localLow, StringComparison.OrdinalIgnoreCase);
+
+                expanded = Environment.ExpandEnvironmentVariables(expanded);
+
+                if (Path.IsPathRooted(expanded))
+                    return expanded;
+
+                if (!string.IsNullOrWhiteSpace(game.InstallDirectory))
+                    return Path.Combine(game.InstallDirectory, expanded);
+
+                return expanded;
+            }
+
+            string fallbackFile = pack.ConfigFormat.ToLowerInvariant() switch
+            {
+                "ini" => "Engine.ini",
+                "json" => "settings.json",
+                "keyvalueequals" => "settings.cfg",
+                _ => "config.cfg"
+            };
+
+            return !string.IsNullOrWhiteSpace(game.ConfigDirectory)
+                ? Path.Combine(game.ConfigDirectory, fallbackFile)
+                : Path.Combine(game.InstallDirectory, fallbackFile);
+        }
+
+        public static string MakePortableConfigPath(string fullFilePath, string? gameInstallDir)
+        {
+            if (string.IsNullOrWhiteSpace(fullFilePath)) return string.Empty;
+
+            string normalized = Path.GetFullPath(fullFilePath);
+
+            if (!string.IsNullOrWhiteSpace(gameInstallDir) && Directory.Exists(gameInstallDir))
+            {
+                string normInstall = Path.GetFullPath(gameInstallDir).TrimEnd('\\') + "\\";
+                if (normalized.StartsWith(normInstall, StringComparison.OrdinalIgnoreCase))
+                    return normalized[normInstall.Length..];
+            }
+
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData).TrimEnd('\\');
+            if (!string.IsNullOrWhiteSpace(localAppData) &&
+                normalized.StartsWith(localAppData + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return "%LOCALAPPDATA%" + normalized[localAppData.Length..];
+            }
+
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData).TrimEnd('\\');
+            if (!string.IsNullOrWhiteSpace(appData) &&
+                normalized.StartsWith(appData + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return "%APPDATA%" + normalized[appData.Length..];
+            }
+
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\');
+            string localLow = Path.Combine(userProfile, "AppData", "LocalLow").TrimEnd('\\');
+            if (!string.IsNullOrWhiteSpace(localLow) &&
+                normalized.StartsWith(localLow + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return "{LOCALLOW}" + normalized[localLow.Length..];
+            }
+
+            string myDocs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments).TrimEnd('\\');
+            if (!string.IsNullOrWhiteSpace(myDocs) &&
+                normalized.StartsWith(myDocs + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return "{DOCUMENTS}" + normalized[myDocs.Length..];
+            }
+
+            if (!string.IsNullOrWhiteSpace(userProfile) &&
+                normalized.StartsWith(userProfile + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return "%USERPROFILE%" + normalized[userProfile.Length..];
+            }
+
+            return normalized;
+        }
+
+        public static string SanitizePackId(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "custom_pack";
+
+            var chars = raw.Trim().ToLowerInvariant()
+                .Select(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_')
+                .ToArray();
+
+            string cleaned = new string(chars).Trim('_');
+            while (cleaned.Contains("__")) cleaned = cleaned.Replace("__", "_");
+            return string.IsNullOrWhiteSpace(cleaned) ? "custom_pack" : cleaned;
+        }
+
+        public static string SerializePack(GameProfilePack pack) =>
+            JsonSerializer.Serialize(pack, JsonOptions);
+
+        public static GameProfilePack ClonePack(GameProfilePack source)
+        {
+            string json = SerializePack(source);
+            var clone = JsonSerializer.Deserialize<GameProfilePack>(json, JsonOptions) ?? new GameProfilePack();
+            clone.UniversalSettings ??= new Dictionary<string, string>();
+            clone.Presets ??= new Dictionary<string, Dictionary<string, string>>();
+            return clone;
+        }
+
+        public static GameProfilePack LoadPackFromFile(string filePath)
+        {
+            if (!File.Exists(filePath))
+                throw new FileNotFoundException("JSON profile pack file not found.", filePath);
+
+            string json = File.ReadAllText(filePath);
+            var pack = JsonSerializer.Deserialize<GameProfilePack>(json, JsonOptions)
+                ?? throw new InvalidDataException("The selected file is not a valid Overcapped JSON profile pack.");
+
+            pack.UniversalSettings ??= new Dictionary<string, string>();
+            pack.Presets ??= new Dictionary<string, Dictionary<string, string>>();
+            if (string.IsNullOrWhiteSpace(pack.PackId))
+                pack.PackId = SanitizePackId(Path.GetFileNameWithoutExtension(filePath));
+            if (string.IsNullOrWhiteSpace(pack.ConfigFormat))
+                pack.ConfigFormat = "SpaceDelimited";
+            if (string.IsNullOrWhiteSpace(pack.IniSection))
+                pack.IniSection = "SystemSettings";
+
+            return pack;
+        }
+
+        public static string SavePackToLibrary(GameProfilePack pack)
+        {
+            Directory.CreateDirectory(AppSettings.PacksDirectory);
+            pack.PackId = SanitizePackId(string.IsNullOrWhiteSpace(pack.PackId) ? pack.GameName : pack.PackId);
+
+            string filePath = Path.Combine(AppSettings.PacksDirectory, $"{pack.PackId}.json");
+            File.WriteAllText(filePath, SerializePack(pack));
+            LoadAllPacks();
+            return filePath;
+        }
+
+        public static void ExportPackToFile(GameProfilePack pack, string filePath)
+        {
+            string? dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(filePath, SerializePack(pack));
+        }
+
+        public static List<string> ReadIniSections(string filePath)
+        {
+            var sections = new List<string>();
+            if (!File.Exists(filePath)) return sections;
+
+            foreach (string rawLine in File.ReadAllLines(filePath))
+            {
+                string line = rawLine.Trim();
+                if (line.Length > 2 && line.StartsWith("[") && line.EndsWith("]"))
+                {
+                    string name = line[1..^1].Trim();
+                    if (!string.IsNullOrWhiteSpace(name) &&
+                        !sections.Any(s => s.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        sections.Add(name);
+                    }
+                }
+            }
+
+            return sections;
+        }
+
+        public static Dictionary<string, string> ParseConfigFile(string filePath, string configFormat, string? defaultIniSection)
+        {
+            var entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!File.Exists(filePath)) return entries;
+
+            string ext = Path.GetExtension(filePath);
+
+            if (configFormat.Equals("Json", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(filePath));
+                    FlattenJsonElement(doc.RootElement, string.Empty, entries);
+                }
+                catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                return entries;
+            }
+
+            string[] lines = File.ReadAllLines(filePath);
+
+            if (configFormat.Equals("Ini", StringComparison.OrdinalIgnoreCase))
+            {
+                string currentSection = string.Empty;
+                string normalizedDefault = (defaultIniSection ?? string.Empty).Trim().Trim('[', ']');
+
+                foreach (string rawLine in lines)
+                {
+                    string line = rawLine.Trim();
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith(";") || line.StartsWith("#") || line.StartsWith("//"))
+                        continue;
+
+                    if (line.Length > 2 && line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        currentSection = line[1..^1].Trim();
+                        continue;
+                    }
+
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+
+                    string key = line[..eq].Trim();
+                    string val = line[(eq + 1)..].Trim().Trim('"');
+                    if (string.IsNullOrWhiteSpace(key)) continue;
+
+                    if (currentSection.Equals("Core.System", StringComparison.OrdinalIgnoreCase) &&
+                        key.Equals("Paths", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    bool useSectionPrefix = !string.IsNullOrWhiteSpace(currentSection) &&
+                                            !currentSection.Equals(normalizedDefault, StringComparison.OrdinalIgnoreCase);
+
+                    string entryKey = useSectionPrefix ? $"[{currentSection}]{key}" : key;
+                    entries[entryKey] = val;
+                }
+
+                return entries;
+            }
+
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("//") || line.StartsWith("#") || line.StartsWith(";"))
+                    continue;
+
+                if (line.Contains('=') && !line.StartsWith("bind ", StringComparison.OrdinalIgnoreCase))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0)
+                    {
+                        string key = line[..eq].Trim();
+                        string val = line[(eq + 1)..].Trim().Trim('"');
+                        if (!string.IsNullOrWhiteSpace(key))
+                            entries[key] = val;
+                        continue;
+                    }
+                }
+
+                string[] parts = line.Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2)
+                {
+                    string key = parts[0].Trim();
+                    string val = parts[1].Trim().Trim('"');
+                    if (!string.IsNullOrWhiteSpace(key))
+                        entries[key] = val;
+                }
+            }
+
+            return entries;
+        }
+
+        private static void FlattenJsonElement(JsonElement element, string prefix, Dictionary<string, string> output)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (JsonProperty prop in element.EnumerateObject())
+                    {
+                        string nextPrefix = string.IsNullOrEmpty(prefix) ? prop.Name : $"{prefix}.{prop.Name}";
+                        FlattenJsonElement(prop.Value, nextPrefix, output);
+                    }
+                    break;
+
+                case JsonValueKind.String:
+                case JsonValueKind.Number:
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    if (!string.IsNullOrEmpty(prefix))
+                        output[prefix] = element.ToString();
+                    break;
+            }
+        }
+
         public static void ApplyPack(GameProfile game, GameProfilePack pack)
         {
-            string configPath = !string.IsNullOrWhiteSpace(pack.RelativeConfigPath)
-                ? Path.Combine(game.InstallDirectory, pack.RelativeConfigPath)
-                : Path.Combine(game.ConfigDirectory, "config.cfg");
+            string configPath = ResolvePackConfigPath(game, pack);
 
             var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -101,15 +409,175 @@ namespace Overcapped_Optimizer.Core
 
             if (pack.ConfigFormat.Equals("Ini", StringComparison.OrdinalIgnoreCase))
             {
-                UnrealEngineModule.MergeIniSections(configPath, new Dictionary<string, Dictionary<string, string>>
+                string defaultSection = string.IsNullOrWhiteSpace(pack.IniSection) ? "SystemSettings" : pack.IniSection;
+                var sections = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var kvp in merged)
                 {
-                    [pack.IniSection] = merged
-                });
+                    string targetSection = defaultSection;
+                    string targetKey = kvp.Key;
+
+                    if (targetKey.StartsWith("["))
+                    {
+                        int closeBracket = targetKey.IndexOf(']');
+                        if (closeBracket > 1 && closeBracket < targetKey.Length - 1)
+                        {
+                            targetSection = targetKey[1..closeBracket].Trim();
+                            targetKey = targetKey[(closeBracket + 1)..].Trim();
+                        }
+                    }
+
+                    if (!sections.TryGetValue(targetSection, out var sectionDict))
+                    {
+                        sectionDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        sections[targetSection] = sectionDict;
+                    }
+
+                    sectionDict[targetKey] = kvp.Value;
+                }
+
+                UnrealEngineModule.MergeIniSections(configPath, sections);
+            }
+            else if (pack.ConfigFormat.Equals("KeyValueEquals", StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyKeyValueEqualsConfig(configPath, merged);
+            }
+            else if (pack.ConfigFormat.Equals("Json", StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyJsonConfig(configPath, merged);
             }
             else
             {
                 ApplySpaceDelimitedConfig(configPath, merged);
             }
+        }
+
+        private static void ApplyJsonConfig(string filePath, Dictionary<string, string> updates)
+        {
+            JsonObject root;
+
+            if (File.Exists(filePath))
+            {
+                string backup = filePath + ".universal.bak";
+                if (!File.Exists(backup))
+                    File.Copy(filePath, backup, overwrite: false);
+
+                try
+                {
+                    root = JsonNode.Parse(File.ReadAllText(filePath)) as JsonObject ?? new JsonObject();
+                }
+                catch
+                {
+                    root = new JsonObject();
+                }
+            }
+            else
+            {
+                root = new JsonObject();
+            }
+
+            foreach (var kvp in updates)
+            {
+                string[] segments = kvp.Key.Split('.', StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length == 0) continue;
+
+                JsonObject cursor = root;
+                for (int i = 0; i < segments.Length - 1; i++)
+                {
+                    string seg = FindExistingJsonKey(cursor, segments[i]) ?? segments[i];
+                    if (cursor[seg] is not JsonObject nextObj)
+                    {
+                        nextObj = new JsonObject();
+                        cursor[seg] = nextObj;
+                    }
+                    cursor = nextObj;
+                }
+
+                string leafKey = FindExistingJsonKey(cursor, segments[^1]) ?? segments[^1];
+                cursor[leafKey] = CreateTypedJsonValue(kvp.Value, cursor[leafKey]);
+            }
+
+            string? dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllText(filePath, root.ToJsonString(JsonOptions));
+        }
+
+        private static string? FindExistingJsonKey(JsonObject obj, string targetKey)
+        {
+            foreach (var kvp in obj)
+            {
+                if (kvp.Key.Equals(targetKey, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Key;
+            }
+            return null;
+        }
+
+        private static JsonNode CreateTypedJsonValue(string rawValue, JsonNode? existingNode)
+        {
+            if (existingNode is JsonValue existingVal)
+            {
+                JsonElement el = existingVal.GetValue<JsonElement>();
+                if (el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False)
+                {
+                    if (bool.TryParse(rawValue, out bool b)) return JsonValue.Create(b)!;
+                    if (rawValue == "1") return JsonValue.Create(true)!;
+                    if (rawValue == "0") return JsonValue.Create(false)!;
+                }
+                else if (el.ValueKind == JsonValueKind.Number)
+                {
+                    if (long.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l))
+                        return JsonValue.Create(l)!;
+                    if (double.TryParse(rawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
+                        return JsonValue.Create(d)!;
+                }
+                else if (el.ValueKind == JsonValueKind.String)
+                {
+                    return JsonValue.Create(rawValue)!;
+                }
+            }
+
+            if (bool.TryParse(rawValue, out bool parsedBool))
+                return JsonValue.Create(parsedBool)!;
+            if (long.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedLong))
+                return JsonValue.Create(parsedLong)!;
+            if (double.TryParse(rawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsedDouble))
+                return JsonValue.Create(parsedDouble)!;
+
+            return JsonValue.Create(rawValue)!;
+        }
+
+        private static void ApplyKeyValueEqualsConfig(string filePath, Dictionary<string, string> updates)
+        {
+            List<string> lines = File.Exists(filePath)
+                ? File.ReadAllLines(filePath).ToList()
+                : new List<string>();
+
+            if (File.Exists(filePath))
+                File.Copy(filePath, filePath + ".universal.bak", overwrite: true);
+
+            var remaining = new Dictionary<string, string>(updates, StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string trimmed = lines[i].Trim();
+                int eq = trimmed.IndexOf('=');
+                if (eq <= 0 || trimmed.StartsWith(";") || trimmed.StartsWith("#") || trimmed.StartsWith("//"))
+                    continue;
+
+                string key = trimmed[..eq].Trim();
+                if (remaining.TryGetValue(key, out string? newVal))
+                {
+                    lines[i] = $"{key}={newVal}";
+                    remaining.Remove(key);
+                }
+            }
+
+            foreach (var kvp in remaining)
+                lines.Add($"{kvp.Key}={kvp.Value}");
+
+            string? dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.WriteAllLines(filePath, lines);
         }
 
         private static string? ResolveDynamicToken(string rawValue, GameProfile game)
@@ -154,6 +622,7 @@ namespace Overcapped_Optimizer.Core
             foreach (var kvp in existing)
                 writer.WriteLine($"{kvp.Key} \"{kvp.Value}\"");
         }
+
         // Because Rust is life
         private static void EnsureStarterRustPack()
         {

@@ -12,8 +12,8 @@ namespace Overcapped_Optimizer.Helpers
     {
         public static readonly Version? currentVersion = Assembly.GetExecutingAssembly().GetName().Version;
 
-        private const string VersionUrl = "https://Overcapped_Optimizer.us/download/official/version.txt";
-        private const string DownloadUrl = "https://Overcapped_Optimizer.us/downloads";
+        private const string VersionUrl = "https://overcapped.us/download/official/version.txt";
+        private const string DownloadUrl = "https://overcapped.us/downloads";
 
         private static readonly HttpClient SharedHttpClient = new()
         {

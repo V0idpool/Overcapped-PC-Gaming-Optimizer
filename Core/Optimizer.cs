@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -64,6 +65,12 @@ namespace Overcapped_Optimizer.Core
         private static readonly Guid HighPerformancePlanGuid = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
         private static readonly Guid UltimatePerformancePlanGuid = new("e9a42b02-d5df-448d-aa00-03f14749eb61");
 
+        private static readonly HashSet<string> ProtectedSystemProcesses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "system", "idle", "smss", "csrss", "wininit", "winlogon",
+            "services", "lsass", "svchost", "dwm", "explorer", "audiodg"
+        };
+
         [StructLayout(LayoutKind.Sequential)]
         private struct SYSTEM_LOGICAL_PROCESSOR_INFORMATION
         {
@@ -96,21 +103,19 @@ namespace Overcapped_Optimizer.Core
         }
 
         private static System.Timers.Timer? _watchdogTimer;
-        private static readonly object WatchdogLock = new();
+        private static readonly object AutoOptimizerLock = new();
         private static long _cachedPhysicalCoreMask;
         private static Guid? _previousPowerPlanGuid;
         private static DateTime _lastSmartFlushUtc = DateTime.MinValue;
-        private static readonly Dictionary<int, ProcessPriorityClass> ThrottledProcesses = new();
-        // TODO: Add the ability for users to add exe's to the apps to throttle list via the UI.
-        private static readonly string[] BackgroundAppsToThrottle =
-        {
-            "chrome", "msedge", "firefox", "brave", "opera", "opera_gx",
-            "steamwebhelper", "epicgameslauncher"
-        };
+        private static readonly Dictionary<int, (string ProcessName, ProcessPriorityClass Priority)> ThrottledProcesses = new();
+        private static readonly HashSet<int> PinnedProcessIds = new();
 
         public static string? ActiveDetectedGameName { get; private set; }
+        public static GameProfile? ActiveDetectedGame { get; private set; }
+        public static int ActiveDetectedGamePid { get; private set; }
+
         public static event Action<string?>? ActiveGameChanged;
-        private static readonly HashSet<int> PinnedProcessIds = new();
+        public static event Action<GameProfile?, int>? ActiveGameSessionChanged;
 
         public static bool IsAdministrator()
         {
@@ -142,6 +147,147 @@ namespace Overcapped_Optimizer.Core
             {
                 MessageBox.Show("Administrator elevation was canceled.", "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+        }
+
+        public static Task<(bool Success, string Message, bool ProtectionDisabled)> CreateSystemRestorePointAsync(
+            string description = "Overcapped Optimizer Pre-Tweak Snapshot")
+        {
+            return Task.Run(() => CreateSystemRestorePoint(description));
+        }
+
+        public static (bool Success, string Message, bool ProtectionDisabled) CreateSystemRestorePoint(
+            string description = "Overcapped Optimizer Pre-Tweak Snapshot")
+        {
+            if (!IsAdministrator())
+                return (false, "Administrator privileges are required to create a Windows System Restore Point.", false);
+
+            const string srRegPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore";
+            object? previousFreq = null;
+            bool hadPreviousFreq = false;
+
+            try
+            {
+                using (RegistryKey? srKey = Registry.LocalMachine.OpenSubKey(srRegPath, writable: true))
+                {
+                    if (srKey != null)
+                    {
+                        previousFreq = srKey.GetValue("SystemRestorePointCreationFrequency");
+                        hadPreviousFreq = previousFreq != null;
+                        srKey.SetValue("SystemRestorePointCreationFrequency", 0, RegistryValueKind.DWord);
+                    }
+                }
+
+                var scope = new ManagementScope(@"\\.\root\default");
+                scope.Connect();
+
+                using var restoreClass = new ManagementClass(scope, new ManagementPath("SystemRestore"), new ObjectGetOptions());
+                using ManagementBaseObject inParams = restoreClass.GetMethodParameters("CreateRestorePoint");
+                inParams["Description"] = string.IsNullOrWhiteSpace(description)
+                    ? "Overcapped Optimizer Pre-Tweak Snapshot"
+                    : description.Trim();
+                inParams["RestorePointType"] = 12u;
+                inParams["EventType"] = 100u;
+
+                using ManagementBaseObject outParams = restoreClass.InvokeMethod("CreateRestorePoint", inParams, null);
+                uint returnCode = outParams?["ReturnValue"] != null ? Convert.ToUInt32(outParams["ReturnValue"]) : uint.MaxValue;
+
+                if (returnCode == 0)
+                {
+                    return (true, $"System Restore Point created successfully:\n\"{inParams["Description"]}\"", false);
+                }
+
+                if (returnCode == 1058)
+                {
+                    return (false,
+                        "System Protection is currently turned OFF on your Windows drive (Error 1058).\n\nEnable System Protection for your C: drive in Windows System Properties, then try again.",
+                        true);
+                }
+
+                return (false, $"Windows returned error code {returnCode} while creating the restore point. Verify System Protection is enabled on your C: drive.", returnCode == 1058);
+            }
+            catch (ManagementException mex)
+            {
+                ExceptionHandler.LogError(mex);
+                return (false, $"WMI System Restore error: {mex.Message}\n\nVerify System Protection is enabled on your C: drive.", true);
+            }
+            catch (Exception ex)
+            {
+                ExceptionHandler.LogError(ex);
+                return (false, $"Could not create System Restore Point: {ex.Message}", false);
+            }
+            finally
+            {
+                try
+                {
+                    using RegistryKey? srKey = Registry.LocalMachine.OpenSubKey(srRegPath, writable: true);
+                    if (srKey != null)
+                    {
+                        if (hadPreviousFreq && previousFreq != null)
+                            srKey.SetValue("SystemRestorePointCreationFrequency", previousFreq, RegistryValueKind.DWord);
+                        else
+                            srKey.DeleteValue("SystemRestorePointCreationFrequency", false);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        public static void ApplyDeliveryOptimizationState(bool disableP2P)
+        {
+            if (!IsAdministrator())
+                throw new UnauthorizedAccessException("Administrator privileges are required.");
+
+            const string policyPath = @"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization";
+            const string configPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config";
+
+            try
+            {
+                if (disableP2P)
+                {
+                    using (RegistryKey? policyKey = Registry.LocalMachine.CreateSubKey(policyPath, true))
+                    {
+                        policyKey?.SetValue("DODownloadMode", 0, RegistryValueKind.DWord);
+                    }
+
+                    using (RegistryKey? configKey = Registry.LocalMachine.CreateSubKey(configPath, true))
+                    {
+                        configKey?.SetValue("DODownloadMode", 0, RegistryValueKind.DWord);
+                    }
+                }
+                else
+                {
+                    using (RegistryKey? policyKey = Registry.LocalMachine.OpenSubKey(policyPath, true))
+                    {
+                        policyKey?.DeleteValue("DODownloadMode", false);
+                    }
+
+                    using (RegistryKey? configKey = Registry.LocalMachine.CreateSubKey(configPath, true))
+                    {
+                        configKey?.SetValue("DODownloadMode", 1, RegistryValueKind.DWord);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ExceptionHandler.LogError(ex);
+                throw;
+            }
+        }
+
+        public static bool IsDeliveryOptimizationP2PDisabled()
+        {
+            try
+            {
+                using RegistryKey? policyKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization");
+                if (policyKey?.GetValue("DODownloadMode") is int policyMode && policyMode == 0)
+                    return true;
+
+                using RegistryKey? configKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config");
+                if (configKey?.GetValue("DODownloadMode") is int configMode && configMode == 0)
+                    return true;
+            }
+            catch { }
+            return false;
         }
 
         private static long GetPhysicalCoreMask()
@@ -297,72 +443,127 @@ namespace Overcapped_Optimizer.Core
                 return $"Applied Unreal Engine preset '{game.SelectedPreset}' to Engine.ini & GameUserSettings.ini.";
             }
 
-            return "Applied system optimizations (no engine config pack required for this title).";
+            if (game.Engine == GameEngineType.Unity)
+            {
+                return UnityEngineModule.ApplyProfile(game);
+            }
+
+            if (game.Engine == GameEngineType.Source)
+            {
+                return SourceEngineModule.ApplyProfile(game);
+            }
+
+            return "This title uses a custom/generic engine with no matching JSON Pack yet.\n\nAll OS & runtime optimizations (CPU priority, GPU binding, QoS, Per-Game Auto-Optimizations, and Launch Arguments) still apply, or open JSON Pack Builder to create a config pack for it.";
         }
 
-        public static void SyncWatchdog()
+        public static void SyncAutoOptimizer()
         {
-            bool needsWatchdog = AppSettings.Current.AutoPowerPlan
+            bool anyPerGameForceOn = AppSettings.Current.Games.Any(g =>
+                g.MonitorGame &&
+                (g.PCoresOverride == AutoOptimizeOverride.ForceOn ||
+                 g.AutoPowerPlanOverride == AutoOptimizeOverride.ForceOn ||
+                 g.ThrottleAppsOverride == AutoOptimizeOverride.ForceOn));
+
+            bool needsAutoOptimizer = AppSettings.Current.AutoPowerPlan
                               || AppSettings.Current.ThrottleBackgroundApps
-                              || AppSettings.Current.PCoresOnly;
+                              || AppSettings.Current.PCoresOnly
+                              || anyPerGameForceOn
+                              || (AppSettings.Current.FpsOverlayEnabled && AppSettings.Current.AutoSaveSessionBenchmarks);
 
-            lock (WatchdogLock)
+            if (!needsAutoOptimizer)
             {
-                if (!AppSettings.Current.AutoPowerPlan) RestorePreviousPowerPlan();
-                if (!AppSettings.Current.ThrottleBackgroundApps) RestoreThrottledProcesses();
-                if (!AppSettings.Current.PCoresOnly) RestorePinnedProcesses();
-            }
-
-            if (needsWatchdog)
-            {
-                if (_watchdogTimer == null)
+                lock (AutoOptimizerLock)
                 {
-                    _watchdogTimer = new System.Timers.Timer(5000);
-                    _watchdogTimer.Elapsed += (_, _) => WatchdogTick();
-                    _watchdogTimer.AutoReset = true;
-                    _watchdogTimer.Start();
+                    RestorePreviousPowerPlan();
+                    RestoreThrottledProcesses();
+                    RestorePinnedProcesses();
                 }
-                Task.Run(WatchdogTick);
-            }
-            else if (_watchdogTimer != null)
-            {
-                _watchdogTimer.Stop();
-                _watchdogTimer.Dispose();
-                _watchdogTimer = null;
 
-                if (ActiveDetectedGameName != null)
+                if (_watchdogTimer != null)
+                {
+                    _watchdogTimer.Stop();
+                    _watchdogTimer.Dispose();
+                    _watchdogTimer = null;
+                }
+
+                if (ActiveDetectedGameName != null || ActiveDetectedGame != null)
                 {
                     ActiveDetectedGameName = null;
+                    ActiveDetectedGame = null;
+                    ActiveDetectedGamePid = 0;
                     ActiveGameChanged?.Invoke(null);
+                    ActiveGameSessionChanged?.Invoke(null, 0);
                 }
+
+                return;
             }
+
+            if (_watchdogTimer == null)
+            {
+                _watchdogTimer = new System.Timers.Timer(5000);
+                _watchdogTimer.Elapsed += (_, _) => AutoOptimizeTick();
+                _watchdogTimer.AutoReset = true;
+                _watchdogTimer.Start();
+            }
+
+            Task.Run(AutoOptimizeTick);
         }
 
-        private static void WatchdogTick()
+        private static void AutoOptimizeTick()
         {
-            lock (WatchdogLock)
+            lock (AutoOptimizerLock)
             {
                 try
                 {
                     var monitoredGames = AppSettings.Current.Games
-                        .Where(g => !string.IsNullOrWhiteSpace(g.ProcessNameWithoutExtension))
+                        .Where(g => g.MonitorGame && !string.IsNullOrWhiteSpace(g.ProcessNameWithoutExtension))
                         .ToList();
 
-                    string? runningGameName = null;
+                    GameProfile? runningGame = null;
+                    int runningGamePid = 0;
+                    bool anyGameWantsPowerPlan = false;
+                    bool anyGameWantsThrottle = false;
+                    var activeGameProcNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var activePinnedThisTick = new HashSet<int>();
 
                     foreach (GameProfile game in monitoredGames)
                     {
                         Process[] procs = Process.GetProcessesByName(game.ProcessNameWithoutExtension);
                         bool isRunning = procs.Length > 0;
 
+                        if (isRunning)
+                        {
+                            activeGameProcNames.Add(game.ProcessNameWithoutExtension);
+
+                            if (GameProfile.ResolveAutoOptimize(game.AutoPowerPlanOverride, AppSettings.Current.AutoPowerPlan))
+                                anyGameWantsPowerPlan = true;
+
+                            if (GameProfile.ResolveAutoOptimize(game.ThrottleAppsOverride, AppSettings.Current.ThrottleBackgroundApps))
+                                anyGameWantsThrottle = true;
+                        }
+
+                        bool wantPCores = GameProfile.ResolveAutoOptimize(game.PCoresOverride, AppSettings.Current.PCoresOnly);
+
                         foreach (Process p in procs)
                         {
                             try
                             {
-                                if (AppSettings.Current.PCoresOnly)
+                                if (runningGame == null)
+                                {
+                                    runningGame = game;
+                                    runningGamePid = p.Id;
+                                }
+
+                                if (wantPCores)
                                 {
                                     ApplyProcessAffinity(p, true);
                                     PinnedProcessIds.Add(p.Id);
+                                    activePinnedThisTick.Add(p.Id);
+                                }
+                                else if (PinnedProcessIds.Contains(p.Id))
+                                {
+                                    ApplyProcessAffinity(p, false);
+                                    PinnedProcessIds.Remove(p.Id);
                                 }
                             }
                             catch (System.ComponentModel.Win32Exception) { }
@@ -373,28 +574,46 @@ namespace Overcapped_Optimizer.Core
                             }
                         }
 
-                        if (isRunning && runningGameName == null)
+                        if (isRunning && runningGame == null)
                         {
-                            runningGameName = game.Name;
+                            runningGame = game;
                         }
                     }
 
-                    if (runningGameName != null)
+                    foreach (int stalePid in PinnedProcessIds.Where(pid => !activePinnedThisTick.Contains(pid)).ToList())
                     {
-                        if (AppSettings.Current.AutoPowerPlan) ActivateGamingPowerPlan();
-                        if (AppSettings.Current.ThrottleBackgroundApps) ThrottleBackgroundProcesses();
-                    }
-                    else
-                    {
-                        RestorePreviousPowerPlan();
-                        RestoreThrottledProcesses();
-                        PinnedProcessIds.Clear();
+                        try
+                        {
+                            using Process p = Process.GetProcessById(stalePid);
+                            if (!p.HasExited)
+                                ApplyProcessAffinity(p, false);
+                        }
+                        catch { }
+                        PinnedProcessIds.Remove(stalePid);
                     }
 
-                    if (!string.Equals(ActiveDetectedGameName, runningGameName, StringComparison.Ordinal))
+                    string? runningGameName = runningGame?.Name;
+
+                    if (anyGameWantsPowerPlan)
+                        ActivateGamingPowerPlan();
+                    else
+                        RestorePreviousPowerPlan();
+
+                    if (anyGameWantsThrottle)
+                        ThrottleBackgroundProcesses(activeGameProcNames);
+                    else
+                        RestoreThrottledProcesses();
+
+                    bool changed = !string.Equals(ActiveDetectedGameName, runningGameName, StringComparison.Ordinal)
+                                || ActiveDetectedGamePid != runningGamePid;
+
+                    if (changed)
                     {
                         ActiveDetectedGameName = runningGameName;
+                        ActiveDetectedGame = runningGame;
+                        ActiveDetectedGamePid = runningGamePid;
                         ActiveGameChanged?.Invoke(runningGameName);
+                        ActiveGameSessionChanged?.Invoke(runningGame, runningGamePid);
                     }
                 }
                 catch (Exception ex) { ExceptionHandler.LogError(ex); }
@@ -458,20 +677,46 @@ namespace Overcapped_Optimizer.Core
             finally { _previousPowerPlanGuid = null; }
         }
 
-        private static void ThrottleBackgroundProcesses()
+        private static void ThrottleBackgroundProcesses(HashSet<string> activeGameProcNames)
         {
-            foreach (string procName in BackgroundAppsToThrottle)
+            int ownPid = Environment.ProcessId;
+            var configuredApps = (AppSettings.Current.BackgroundAppsToThrottle ?? new List<string>())
+                .Select(AppSettings.NormalizeProcessName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in ThrottledProcesses.ToList())
             {
+                if (!configuredApps.Contains(kvp.Value.ProcessName))
+                {
+                    try
+                    {
+                        using Process p = Process.GetProcessById(kvp.Key);
+                        if (!p.HasExited && p.PriorityClass == ProcessPriorityClass.BelowNormal)
+                            p.PriorityClass = kvp.Value.Priority;
+                    }
+                    catch { }
+                    ThrottledProcesses.Remove(kvp.Key);
+                }
+            }
+
+            foreach (string procName in configuredApps)
+            {
+                if (ProtectedSystemProcesses.Contains(procName)) continue;
+                if (activeGameProcNames.Contains(procName)) continue;
+
                 foreach (Process p in Process.GetProcessesByName(procName))
                 {
                     try
                     {
+                        if (p.Id == ownPid) continue;
+
                         if (!ThrottledProcesses.ContainsKey(p.Id))
                         {
                             ProcessPriorityClass current = p.PriorityClass;
                             if (current is ProcessPriorityClass.Normal or ProcessPriorityClass.AboveNormal)
                             {
-                                ThrottledProcesses[p.Id] = current;
+                                ThrottledProcesses[p.Id] = (procName, current);
                                 p.PriorityClass = ProcessPriorityClass.BelowNormal;
                             }
                         }
@@ -491,7 +736,7 @@ namespace Overcapped_Optimizer.Core
                 {
                     using Process p = Process.GetProcessById(kvp.Key);
                     if (!p.HasExited && p.PriorityClass == ProcessPriorityClass.BelowNormal)
-                        p.PriorityClass = kvp.Value;
+                        p.PriorityClass = kvp.Value.Priority;
                 }
                 catch { }
             }
@@ -500,7 +745,7 @@ namespace Overcapped_Optimizer.Core
 
         public static void RestoreAllRuntimeStates()
         {
-            lock (WatchdogLock)
+            lock (AutoOptimizerLock)
             {
                 RestorePreviousPowerPlan();
                 RestoreThrottledProcesses();
@@ -794,7 +1039,7 @@ namespace Overcapped_Optimizer.Core
             (byte)'Q', (byte)'u', (byte)'e', (byte)'r', (byte)'y', 0x00
         };
 
-        public static async Task<PingTestProgress> RunPingTestAsync(
+        public static async Task<PingTestProgress> RunPingTest(
             string rawHost, int count, IProgress<PingTestProgress> progress, CancellationToken ct)
         {
             string cleaned = rawHost.Trim();
@@ -821,13 +1066,13 @@ namespace Overcapped_Optimizer.Core
             int? a2sPort = null;
             if (specifiedPort.HasValue)
             {
-                a2sPort = await DiscoverPortAsync(targetIp, specifiedPort, ct);
+                a2sPort = await DiscoverPort(targetIp, specifiedPort, ct);
             }
             else
             {
                 bool icmpOk = false;
                 try { using var qp = new Ping(); icmpOk = (await qp.SendPingAsync(targetIp, 800)).Status == IPStatus.Success; } catch { }
-                if (!icmpOk) a2sPort = await DiscoverPortAsync(targetIp, null, ct);
+                if (!icmpOk) a2sPort = await DiscoverPort(targetIp, null, ct);
             }
 
             string mode = a2sPort.HasValue ? $"UDP A2S :{a2sPort.Value}" : "ICMP";
@@ -843,7 +1088,7 @@ namespace Overcapped_Optimizer.Core
 
                 if (a2sPort.HasValue)
                 {
-                    double? rtt = await SendProbeAsync(targetIp, a2sPort.Value, 2000, ct);
+                    double? rtt = await SendProbe(targetIp, a2sPort.Value, 2000, ct);
                     if (rtt.HasValue) rtts.Add(rtt.Value); else lost++;
                 }
                 else
@@ -883,7 +1128,7 @@ namespace Overcapped_Optimizer.Core
             return latest;
         }
 
-        private static async Task<int?> DiscoverPortAsync(IPAddress ip, int? port, CancellationToken ct)
+        private static async Task<int?> DiscoverPort(IPAddress ip, int? port, CancellationToken ct)
         {
             var candidates = port.HasValue
                 ? new[] { port.Value, port.Value + 2, port.Value + 1, port.Value - 1, 27015 }
@@ -891,7 +1136,7 @@ namespace Overcapped_Optimizer.Core
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var tasks = candidates.Where(p => p is >= 1 and <= 65535).Distinct()
-                .Select(async p => (await SendProbeAsync(ip, p, 1200, cts.Token)).HasValue ? (int?)p : null).ToList();
+                .Select(async p => (await SendProbe(ip, p, 1200, cts.Token)).HasValue ? (int?)p : null).ToList();
 
             while (tasks.Count > 0)
             {
@@ -903,7 +1148,7 @@ namespace Overcapped_Optimizer.Core
             return null;
         }
 
-        private static async Task<double?> SendProbeAsync(IPAddress ip, int port, int timeoutMs, CancellationToken ct)
+        private static async Task<double?> SendProbe(IPAddress ip, int port, int timeoutMs, CancellationToken ct)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);

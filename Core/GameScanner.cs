@@ -3,8 +3,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Overcapped_Optimizer.Helpers;
 using Overcapped_Optimizer.Models;
 
@@ -16,16 +18,32 @@ namespace Overcapped_Optimizer.Core
         {
             "unins", "crash", "report", "redist", "vcredist", "dxsetup",
             "easyanticheat", "battleye", "beclient", "beservice", "epicwebhelper",
-            "ueprereq", "prereq", "unitycrashhandler", "cleanup", "updater", "installer"
+            "ueprereq", "prereq", "unitycrashhandler", "cleanup", "updater", "installer",
+            "eaanticheat", "eadesktop", "eabackground", "ealauncher", "origin",
+            "battle.net", "blizzarderror", "agent.exe", "galaxyclient", "gog",
+            "gamelaunchhelper", "activationui", "touchup", "support", "benchmark"
         };
+
+        private static readonly string[] IgnoredLauncherAppNames =
+        {
+            "battle.net", "blizzard battle.net", "ea app", "origin", "ea anticheat",
+            "ea javelin", "punkbuster", "gog galaxy", "epic games launcher", "steam"
+        };
+
+        private static readonly string[] ConfigExtensions = { ".ini", ".cfg", ".json", ".xml" };
 
         public static List<GameProfile> ScanAllInstalledGames()
         {
             var discovered = new List<GameProfile>();
             discovered.AddRange(ScanSteamGames());
             discovered.AddRange(ScanEpicGames());
+            discovered.AddRange(ScanGogGames());
+            discovered.AddRange(ScanXboxGames());
+            discovered.AddRange(ScanBattleNetGames());
+            discovered.AddRange(ScanEaAppGames());
 
             return discovered
+                .Where(g => !string.IsNullOrWhiteSpace(g.InstallDirectory) && !string.IsNullOrWhiteSpace(g.ExecutableName))
                 .GroupBy(g => g.InstallDirectory.TrimEnd('\\'), StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
@@ -110,7 +128,9 @@ namespace Overcapped_Optimizer.Core
         private static List<GameProfile> ScanEpicGames()
         {
             var results = new List<GameProfile>();
-            string manifestsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic", "EpicGamesLauncher", "Data", "Manifests");
+            string manifestsDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Epic", "EpicGamesLauncher", "Data", "Manifests");
 
             if (!Directory.Exists(manifestsDir)) return results;
 
@@ -146,6 +166,324 @@ namespace Overcapped_Optimizer.Core
             return results;
         }
 
+        private static List<GameProfile> ScanGogGames()
+        {
+            var results = new List<GameProfile>();
+            string[] gogKeys =
+            {
+                @"SOFTWARE\WOW6432Node\GOG.com\Games",
+                @"SOFTWARE\GOG.com\Games"
+            };
+
+            foreach (string keyPath in gogKeys)
+            {
+                try
+                {
+                    using RegistryKey? gamesRoot = Registry.LocalMachine.OpenSubKey(keyPath);
+                    if (gamesRoot == null) continue;
+
+                    foreach (string subName in gamesRoot.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using RegistryKey? gameKey = gamesRoot.OpenSubKey(subName);
+                            if (gameKey == null) continue;
+
+                            string? dependsOn = gameKey.GetValue("dependsOn") as string;
+                            if (!string.IsNullOrWhiteSpace(dependsOn)) continue;
+
+                            string? name = (gameKey.GetValue("gameName") ?? gameKey.GetValue("GAMENAME")) as string;
+                            string? installDir = (gameKey.GetValue("path") ?? gameKey.GetValue("PATH")) as string;
+                            string? exePath = (gameKey.GetValue("exe") ?? gameKey.GetValue("EXE")) as string;
+
+                            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
+                                continue;
+
+                            if (!string.IsNullOrWhiteSpace(exePath) && !Path.IsPathRooted(exePath))
+                                exePath = Path.Combine(installDir, exePath);
+
+                            results.Add(BuildGameProfile(name.Trim(), installDir.TrimEnd('\\'), GameLauncherSource.Gog, exePath));
+                        }
+                        catch (Exception ex)
+                        {
+                            ExceptionHandler.LogError(ex);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ExceptionHandler.LogError(ex);
+                }
+            }
+
+            return results;
+        }
+
+        private static List<GameProfile> ScanXboxGames()
+        {
+            var results = new List<GameProfile>();
+            var xboxRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (DriveInfo drive in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (!drive.IsReady || drive.DriveType != DriveType.Fixed) continue;
+
+                    string rootPath = drive.RootDirectory.FullName;
+                    string defaultXboxDir = Path.Combine(rootPath, "XboxGames");
+                    if (Directory.Exists(defaultXboxDir))
+                        xboxRoots.Add(defaultXboxDir);
+
+                    string gamingRootFile = Path.Combine(rootPath, ".GamingRoot");
+                    if (File.Exists(gamingRootFile))
+                    {
+                        byte[] bytes = File.ReadAllBytes(gamingRootFile);
+                        if (bytes.Length > 10)
+                        {
+                            string decoded = Encoding.Unicode.GetString(bytes, 8, bytes.Length - 8);
+                            foreach (string segment in decoded.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                string cleaned = segment.Trim().TrimStart('\\');
+                                if (string.IsNullOrWhiteSpace(cleaned)) continue;
+                                string candidate = Path.Combine(rootPath, cleaned);
+                                if (Directory.Exists(candidate))
+                                    xboxRoots.Add(candidate);
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            foreach (string rootDir in xboxRoots)
+            {
+                try
+                {
+                    foreach (string gameDir in Directory.EnumerateDirectories(rootDir))
+                    {
+                        try
+                        {
+                            string contentDir = Directory.Exists(Path.Combine(gameDir, "Content"))
+                                ? Path.Combine(gameDir, "Content")
+                                : gameDir;
+
+                            string configPath = Path.Combine(contentDir, "MicrosoftGame.config");
+                            if (!File.Exists(configPath))
+                                configPath = Path.Combine(gameDir, "MicrosoftGame.config");
+
+                            string displayName = Path.GetFileName(gameDir);
+                            string? explicitExe = null;
+
+                            if (File.Exists(configPath))
+                            {
+                                try
+                                {
+                                    XDocument xml = XDocument.Load(configPath);
+                                    string? xmlDisplayName = xml.Descendants("ShellVisuals")
+                                        .Select(x => (string?)x.Attribute("DefaultDisplayName"))
+                                        .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+
+                                    if (!string.IsNullOrWhiteSpace(xmlDisplayName) &&
+                                        !xmlDisplayName.StartsWith("ms-resource:", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        displayName = xmlDisplayName.Trim();
+                                    }
+
+                                    string? exeRel = xml.Descendants("Executable")
+                                        .Select(x => (string?)x.Attribute("Name"))
+                                        .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+
+                                    if (!string.IsNullOrWhiteSpace(exeRel))
+                                    {
+                                        string candidate = Path.Combine(contentDir, exeRel);
+                                        if (File.Exists(candidate))
+                                            explicitExe = candidate;
+                                    }
+                                }
+                                catch { }
+                            }
+
+                            var profile = BuildGameProfile(displayName, contentDir, GameLauncherSource.Xbox, explicitExe);
+                            if (!string.IsNullOrWhiteSpace(profile.ExecutablePath))
+                                results.Add(profile);
+                        }
+                        catch (Exception ex)
+                        {
+                            ExceptionHandler.LogError(ex);
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return results;
+        }
+
+        private static List<GameProfile> ScanBattleNetGames()
+        {
+            var results = new List<GameProfile>();
+            string[] uninstallRoots =
+            {
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+
+            foreach (string rootPath in uninstallRoots)
+            {
+                try
+                {
+                    using RegistryKey? uninstall = Registry.LocalMachine.OpenSubKey(rootPath);
+                    if (uninstall == null) continue;
+
+                    foreach (string subName in uninstall.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using RegistryKey? appKey = uninstall.OpenSubKey(subName);
+                            if (appKey == null) continue;
+
+                            string? publisher = appKey.GetValue("Publisher") as string;
+                            string? uninstallStr = appKey.GetValue("UninstallString") as string;
+                            bool isBlizzard =
+                                (!string.IsNullOrWhiteSpace(publisher) && publisher.Contains("Blizzard", StringComparison.OrdinalIgnoreCase)) ||
+                                (!string.IsNullOrWhiteSpace(uninstallStr) && uninstallStr.Contains("Battle.net", StringComparison.OrdinalIgnoreCase));
+
+                            if (!isBlizzard) continue;
+
+                            string? name = appKey.GetValue("DisplayName") as string;
+                            string? installDir = appKey.GetValue("InstallLocation") as string;
+
+                            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
+                                continue;
+
+                            if (IsIgnoredLauncherApp(name)) continue;
+
+                            var profile = BuildGameProfile(name.Trim(), installDir.TrimEnd('\\'), GameLauncherSource.BattleNet, null);
+                            if (!string.IsNullOrWhiteSpace(profile.ExecutablePath))
+                                results.Add(profile);
+                        }
+                        catch (Exception ex)
+                        {
+                            ExceptionHandler.LogError(ex);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ExceptionHandler.LogError(ex);
+                }
+            }
+
+            return results;
+        }
+
+        private static List<GameProfile> ScanEaAppGames()
+        {
+            var results = new List<GameProfile>();
+
+            string[] eaRoots =
+            {
+                @"SOFTWARE\WOW6432Node\EA Games",
+                @"SOFTWARE\EA Games",
+                @"SOFTWARE\WOW6432Node\Electronic Arts",
+                @"SOFTWARE\Electronic Arts"
+            };
+
+            foreach (string rootPath in eaRoots)
+            {
+                try
+                {
+                    using RegistryKey? eaRoot = Registry.LocalMachine.OpenSubKey(rootPath);
+                    if (eaRoot == null) continue;
+
+                    foreach (string subName in eaRoot.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using RegistryKey? gameKey = eaRoot.OpenSubKey(subName);
+                            if (gameKey == null) continue;
+
+                            string? installDir = (gameKey.GetValue("Install Dir") ?? gameKey.GetValue("InstallDir") ?? gameKey.GetValue("InstallLocation")) as string;
+                            if (string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
+                                continue;
+
+                            string name = (gameKey.GetValue("DisplayName") as string)?.Trim() ?? subName.Trim();
+                            if (IsIgnoredLauncherApp(name)) continue;
+
+                            var profile = BuildGameProfile(name, installDir.TrimEnd('\\'), GameLauncherSource.EaApp, null);
+                            if (!string.IsNullOrWhiteSpace(profile.ExecutablePath))
+                                results.Add(profile);
+                        }
+                        catch (Exception ex)
+                        {
+                            ExceptionHandler.LogError(ex);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ExceptionHandler.LogError(ex);
+                }
+            }
+
+            string[] uninstallRoots =
+            {
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+
+            foreach (string rootPath in uninstallRoots)
+            {
+                try
+                {
+                    using RegistryKey? uninstall = Registry.LocalMachine.OpenSubKey(rootPath);
+                    if (uninstall == null) continue;
+
+                    foreach (string subName in uninstall.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using RegistryKey? appKey = uninstall.OpenSubKey(subName);
+                            if (appKey == null) continue;
+
+                            string? publisher = appKey.GetValue("Publisher") as string;
+                            if (string.IsNullOrWhiteSpace(publisher) ||
+                                !publisher.Contains("Electronic Arts", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            string? name = appKey.GetValue("DisplayName") as string;
+                            string? installDir = appKey.GetValue("InstallLocation") as string;
+
+                            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
+                                continue;
+
+                            if (IsIgnoredLauncherApp(name)) continue;
+
+                            var profile = BuildGameProfile(name.Trim(), installDir.TrimEnd('\\'), GameLauncherSource.EaApp, null);
+                            if (!string.IsNullOrWhiteSpace(profile.ExecutablePath))
+                                results.Add(profile);
+                        }
+                        catch (Exception ex)
+                        {
+                            ExceptionHandler.LogError(ex);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ExceptionHandler.LogError(ex);
+                }
+            }
+
+            return results;
+        }
+
+        private static bool IsIgnoredLauncherApp(string name)
+        {
+            return IgnoredLauncherAppNames.Any(n => name.Contains(n, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static GameProfile BuildGameProfile(string name, string installDir, GameLauncherSource launcher, string? explicitExePath)
         {
             GameEngineType engine = DetectEngine(installDir);
@@ -170,8 +508,9 @@ namespace Overcapped_Optimizer.Core
                 profile.JsonPackId = matchedPack.PackId;
                 if (string.IsNullOrWhiteSpace(profile.ConfigDirectory) && !string.IsNullOrWhiteSpace(matchedPack.RelativeConfigPath))
                 {
-                    string resolved = Path.Combine(installDir, matchedPack.RelativeConfigPath);
-                    profile.ConfigDirectory = Path.GetDirectoryName(resolved) ?? installDir;
+                    string resolved = JsonProfilePackManager.ResolvePackConfigPath(profile, matchedPack);
+                    if (!string.IsNullOrWhiteSpace(resolved))
+                        profile.ConfigDirectory = Path.GetDirectoryName(resolved) ?? installDir;
                 }
             }
 
@@ -266,6 +605,22 @@ namespace Overcapped_Optimizer.Core
                     return (targetExe, finalLaunch);
                 }
 
+                var subCandidates = EnumerateExesShallow(installDir, maxDepth: 2)
+                    .Where(p => !IsIgnoredExe(p) &&
+                                !Path.GetFileName(p).Equals("start_protected_game.exe", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(p => new FileInfo(p).Length)
+                    .ToList();
+
+                if (subCandidates.Count > 0)
+                {
+                    targetExe = subCandidates[0];
+                    string finalLaunch = !string.IsNullOrWhiteSpace(launchExe)
+                        ? launchExe
+                        : (eacLauncher ?? targetExe);
+
+                    return (targetExe, finalLaunch);
+                }
+
                 if (eacLauncher != null)
                     return (eacLauncher, eacLauncher);
             }
@@ -274,20 +629,58 @@ namespace Overcapped_Optimizer.Core
             return (targetExe, launchExe);
         }
 
-        private static string ResolveConfigDirectory(string gameName, string installDir, GameEngineType engine, string targetExe)
+        private static IEnumerable<string> EnumerateExesShallow(string rootDir, int maxDepth)
         {
+            var queue = new Queue<(string Dir, int Depth)>();
+            queue.Enqueue((rootDir, 0));
+
+            while (queue.Count > 0)
+            {
+                var (currentDir, depth) = queue.Dequeue();
+
+                string[] files;
+                try { files = Directory.GetFiles(currentDir, "*.exe"); }
+                catch { continue; }
+
+                foreach (string f in files)
+                    yield return f;
+
+                if (depth >= maxDepth) continue;
+
+                string[] subDirs;
+                try { subDirs = Directory.GetDirectories(currentDir); }
+                catch { continue; }
+
+                foreach (string sub in subDirs)
+                    queue.Enqueue((sub, depth + 1));
+            }
+        }
+
+        public static string ResolveConfigDirectory(string gameName, string installDir, GameEngineType engine, string targetExe)
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string myDocs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            string exeStem = string.IsNullOrWhiteSpace(targetExe)
+                ? string.Empty
+                : Path.GetFileNameWithoutExtension(targetExe).Replace("-Win64-Shipping", "", StringComparison.OrdinalIgnoreCase);
+
+            string cleanName = Regex.Replace(gameName ?? string.Empty, @"[™®©:]", "").Trim();
+            var candidateFolderNames = new[]
+            {
+                exeStem,
+                cleanName,
+                cleanName.Replace(" ", ""),
+                gameName ?? string.Empty
+            }
+            .Where(s => !string.IsNullOrWhiteSpace(s) && s.IndexOfAny(Path.GetInvalidFileNameChars()) < 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
             if (engine == GameEngineType.UnrealEngine)
             {
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string exeStem = Path.GetFileNameWithoutExtension(targetExe).Replace("-Win64-Shipping", "", StringComparison.OrdinalIgnoreCase);
-
-                var candidateFolderNames = new[]
-                {
-                    exeStem,
-                    gameName.Replace(" ", ""),
-                    gameName
-                }.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase);
-
                 string[] subPaths =
                 {
                     Path.Combine("Saved", "Config", "Windows"),
@@ -304,7 +697,70 @@ namespace Overcapped_Optimizer.Core
                     }
                 }
             }
+
+            if (engine == GameEngineType.Unity)
+            {
+                string localLow = UnityEngineModule.ResolveLocalLowConfigDirectory(
+                    installDir, string.IsNullOrWhiteSpace(targetExe) ? null : Path.GetFileName(targetExe));
+                if (!string.IsNullOrWhiteSpace(localLow))
+                    return localLow;
+
+                string installCfg = Path.Combine(installDir, "cfg");
+                if (Directory.Exists(installCfg) && HasConfigFiles(installCfg))
+                    return installCfg;
+            }
+
+            if (engine == GameEngineType.Source)
+            {
+                string sourceCfg = SourceEngineModule.ResolveCfgDirectory(installDir);
+                if (!string.IsNullOrWhiteSpace(sourceCfg))
+                    return sourceCfg;
+            }
+
+            string[] baseRoots =
+            {
+                Path.Combine(myDocs, "My Games"),
+                myDocs,
+                Path.Combine(userProfile, "Saved Games"),
+                localAppData,
+                appData
+            };
+
+            string[] commonSubDirs = { "settings", "config", "cfg", "Saved" };
+
+            foreach (string root in baseRoots.Where(Directory.Exists))
+            {
+                foreach (string folderName in candidateFolderNames)
+                {
+                    string basePath = Path.Combine(root, folderName);
+                    if (!Directory.Exists(basePath)) continue;
+
+                    foreach (string sub in commonSubDirs)
+                    {
+                        string subPath = Path.Combine(basePath, sub);
+                        if (Directory.Exists(subPath) && HasConfigFiles(subPath))
+                            return subPath;
+                    }
+
+                    if (HasConfigFiles(basePath))
+                        return basePath;
+                }
+            }
+
             return string.Empty;
+        }
+
+        private static bool HasConfigFiles(string directory)
+        {
+            try
+            {
+                return Directory.EnumerateFiles(directory, "*.*", SearchOption.TopDirectoryOnly)
+                    .Any(f => ConfigExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool IsIgnoredExe(string path)

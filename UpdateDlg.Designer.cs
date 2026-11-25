@@ -86,7 +86,7 @@ namespace Overcapped_Optimizer
             _lblHeader.BackColor = Color.FromArgb(14, 17, 22);
             _lblHeader.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
             _lblHeader.ForeColor = Color.FromArgb(224, 83, 40);
-            _lblHeader.Location = new Point(16, 51);
+            _lblHeader.Location = new Point(17, 55);
             _lblHeader.Name = "_lblHeader";
             _lblHeader.Size = new Size(363, 19);
             _lblHeader.TabIndex = 1;
@@ -98,7 +98,7 @@ namespace Overcapped_Optimizer
             _lblSub.BackColor = Color.FromArgb(14, 17, 22);
             _lblSub.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
             _lblSub.ForeColor = Color.FromArgb(148, 160, 176);
-            _lblSub.Location = new Point(16, 74);
+            _lblSub.Location = new Point(17, 78);
             _lblSub.Name = "_lblSub";
             _lblSub.Size = new Size(298, 15);
             _lblSub.TabIndex = 2;
@@ -111,7 +111,7 @@ namespace Overcapped_Optimizer
             _txtNotes.BackColor = Color.Transparent;
             _txtNotes.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
             _txtNotes.ForeColor = Color.FromArgb(240, 244, 248);
-            _txtNotes.Location = new Point(16, 94);
+            _txtNotes.Location = new Point(17, 98);
             _txtNotes.Name = "_txtNotes";
             _txtNotes.Size = new Size(525, 218);
             _txtNotes.TabIndex = 3;
@@ -127,7 +127,7 @@ namespace Overcapped_Optimizer
             _btnDownload.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             _btnDownload.ForeColor = Color.FromArgb(240, 244, 248);
             _btnDownload.IsPrimaryAction = true;
-            _btnDownload.Location = new Point(259, 324);
+            _btnDownload.Location = new Point(260, 328);
             _btnDownload.Name = "_btnDownload";
             _btnDownload.Size = new Size(190, 34);
             _btnDownload.TabIndex = 5;
@@ -143,7 +143,7 @@ namespace Overcapped_Optimizer
             _btnLater.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             _btnLater.ForeColor = Color.FromArgb(240, 244, 248);
             _btnLater.IsPrimaryAction = false;
-            _btnLater.Location = new Point(457, 324);
+            _btnLater.Location = new Point(458, 328);
             _btnLater.Name = "_btnLater";
             _btnLater.Size = new Size(84, 34);
             _btnLater.TabIndex = 6;
@@ -155,7 +155,7 @@ namespace Overcapped_Optimizer
             _lblStudioBrand.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             _lblStudioBrand.BackColor = Color.Transparent;
             _lblStudioBrand.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            _lblStudioBrand.Location = new Point(16, 328);
+            _lblStudioBrand.Location = new Point(17, 332);
             _lblStudioBrand.Name = "_lblStudioBrand";
             _lblStudioBrand.Size = new Size(155, 24);
             _lblStudioBrand.TabIndex = 4;

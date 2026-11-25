@@ -84,15 +84,12 @@ namespace Overcapped_Optimizer.Core
         {
             var s = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                // VRAM-scaled texture streaming & UE precaching
                 ["r.Streaming.PoolSize"] = poolSizeMb.ToString(CultureInfo.InvariantCulture),
                 ["r.Streaming.UseNewMetrics"] = "1",
                 ["r.Streaming.StressTest.ExtraAsyncLatency"] = "0",
                 ["r.PSOPrecaching"] = "1",
                 ["r.PSOPrecache.Components"] = "1",
                 ["r.PSOPrecache.Resources"] = "1",
-
-                // UE shader, async pipeline, and overhead reduction optimizations
                 ["fx.NiagaraAllowRuntimeScalabilityChanges"] = "1",
                 ["r.Occlusion.SingleRHIThreadStall"] = "1",
                 ["r.Shadow.DetectVertexShaderLayerAtRuntime"] = enableLumen ? "1" : "0",
