@@ -180,17 +180,17 @@ A starter `rust.json` pack is generated automatically on first launch so you hav
 ### Supported Formats & Dynamic Tokens
 
 - **`ConfigFormat`:**
-  - `"SpaceDelimited"` — writes `key "value"` (Rust, Source, Frostbite `user.cfg`)
-  - `"Ini"` — merges `key=value` under `IniSection` (supports multi-section targeting via `[SectionName]KeyName`)
-  - `"KeyValueEquals"` — flat `key=value` files without INI section headers
-  - `"Json"` — type-preserving nested JSON patching via dot-notation keys (e.g., `graphics.shadowQuality`)
+  - `"SpaceDelimited"` - writes `key "value"` (Rust, Source, Frostbite `user.cfg`)
+  - `"Ini"` - merges `key=value` under `IniSection` (supports multi-section targeting via `[SectionName]KeyName`)
+  - `"KeyValueEquals"` - flat `key=value` files without INI section headers
+  - `"Json"` - type-preserving nested JSON patching via dot-notation keys (e.g., `graphics.shadowQuality`)
 - **Dynamic Tokens:**
-  - `{AUTO_GC_BUFFER}` — scales to `1024`, `2048`, or `4096` based on total system RAM
-  - `{AUTO_VRAM_POOL}` — calculates texture streaming pool size in MB from your GPU VRAM
-  - `{FPS_LIMIT}` — pulls from your selected FPS cap in the UI
-  - `{MENU_FPS_LIMIT}` — pulls from the game's menu FPS cap
-  - `{SCREEN_MODE}` — writes `1` (Exclusive Fullscreen) or `0` (Borderless)
-  - `{NVIDIA_REFLEX}` — writes `"2"` (On + Boost) on NVIDIA GPUs and skips the key on AMD/Intel
+  - `{AUTO_GC_BUFFER}` - scales to `1024`, `2048`, or `4096` based on total system RAM
+  - `{AUTO_VRAM_POOL}` - calculates texture streaming pool size in MB from your GPU VRAM
+  - `{FPS_LIMIT}` - pulls from your selected FPS cap in the UI
+  - `{MENU_FPS_LIMIT}` - pulls from the game's menu FPS cap
+  - `{SCREEN_MODE}` - writes `1` (Exclusive Fullscreen) or `0` (Borderless)
+  - `{NVIDIA_REFLEX}` - writes `"2"` (On + Boost) on NVIDIA GPUs and skips the key on AMD/Intel
 
 ### Example Pack
 
@@ -227,10 +227,10 @@ Overcapped is built to stay completely outside of protected game processes so it
 
 - **Zero DLL injection** and **zero process memory reading/writing**.
 - **No graphics hooking**, the FPS overlay reads native Windows ETW DXGI/D3D9 Present events externally.
-- **Anti-cheat aware engine tuning** — skips Unity `*_Data\boot.config` edits automatically if EAC, BattlEye, or EA AntiCheat is detected in the game folder.
-- **De-elevated game launching** — launches games with standard user permissions via Explorer's shell token even when Overcapped is running as Admin, and launches Steam / Epic games through their native launcher protocols.
-- **Standard Windows APIs & registry policies** — IFEO CPU priority, DXGI GPU preference, Windows Power Plans, Policy QoS, Standby RAM flushing, and throttling *background* apps instead of poking the game.
-- **Security features stay untouched** — never disables TPM, Secure Boot, or VBS/HVCI.
+- **Anti-cheat aware engine tuning** - skips Unity `*_Data\boot.config` edits automatically if EAC, BattlEye, or EA AntiCheat is detected in the game folder.
+- **De-elevated game launching** - launches games with standard user permissions via Explorer's shell token even when Overcapped is running as Admin, and launches Steam / Epic games through their native launcher protocols.
+- **Standard Windows APIs & registry policies** - IFEO CPU priority, DXGI GPU preference, Windows Power Plans, Policy QoS, Standby RAM flushing, and throttling *background* apps instead of poking the game.
+- **Security features stay untouched** - never disables TPM, Secure Boot, or VBS/HVCI.
 
 ---
 
