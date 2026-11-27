@@ -432,8 +432,13 @@ namespace Overcapped_Optimizer.Helpers
                 ("Background App Throttle", s.HasGameProfile ? s.EffectiveThrottleApps : c.ThrottleBackgroundApps),
                 ("Game Mode / DVR Off", c.GameModeAndDisableDvr),
                 ("FSO Disabled", c.DisableFSO),
+                ("HAGS Enabled", HardwareDetector.IsHagsEnabled()),
+                ("Pause Win Search", c.PauseWindowsSearchWhileGaming),
+                ("Telemetry Reduced", c.ReduceWindowsTelemetry),
                 ("Delivery Opt P2P Off", c.DisableDeliveryOptimization),
                 ("NIC Power Saving Off", c.DisableNicPowerSaving),
+                ("NIC Int. Mod Off", c.DisableInterruptModeration),
+                ("NIC RSS Enabled", c.EnableNicRss),
                 ("Auto Standby RAM Flush", c.AutoFlushEnabled)
             };
 
@@ -458,7 +463,7 @@ namespace Overcapped_Optimizer.Helpers
         {
             if (warnings.Count == 0)
             {
-                return "<div class=\"note note-ok\"><strong>All Checks Passed</strong><div>Monitor refresh rates, RAM XMP/dual-channel speed, Windows Power Plan, and system drive space look healthy.</div></div>";
+                return "<div class=\"note note-ok\"><strong>All Checks Passed</strong><div>Monitor refresh rates, RAM XMP/dual-channel speed, Windows Page File, GPU Resizable BAR, HAGS/Game Mode, Power Plan, and system drive space look healthy.</div></div>";
             }
 
             var sb = new StringBuilder();
@@ -522,7 +527,7 @@ namespace Overcapped_Optimizer.Helpers
             if (notes.Count == 0)
             {
                 string extra = healthWarnings.Count > 0
-                    ? " Review the Hardware Health Snapshot on the right for any system-level tweaks."
+                    ? " Review the Hardware Health Snapshot on the right for any system-level optimizations."
                     : " Frame pacing and stutter counts stayed clean across the session.";
                 notes.Add(("ok", "Smooth Session Performance",
                     $"Maintained {s.AvgFps.ToString("F1", inv)} Avg FPS with {s.OnePercentLowFps.ToString("F1", inv)} FPS 1% Lows and only {s.StutterFrames33Ms:N0} stutter frame(s).{extra}"));
@@ -1252,7 +1257,7 @@ namespace Overcapped_Optimizer.Helpers
                     const btn = this;
                     const d = currentData;
                     const lines = [
-                        '**Overcapped Benchmark — ' + d.gameName + '** (' + d.presetName + ' | ' + d.engineName + ')',
+                        '**Overcapped Benchmark - ' + d.gameName + '** (' + d.presetName + ' | ' + d.engineName + ')',
                         '```',
                         'Avg FPS:      ' + d.avgFps.toFixed(1) + ' FPS (Median: ' + d.medianFps.toFixed(1) + ')',
                         '1% Low:       ' + d.onePercentLowFps.toFixed(1) + ' FPS (P99: ' + d.p99FrameTimeMs.toFixed(1) + ' ms)',

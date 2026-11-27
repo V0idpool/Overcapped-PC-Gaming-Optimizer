@@ -59,6 +59,44 @@ namespace Overcapped_Optimizer.Core
         private static extern uint PowerGetActiveScheme(IntPtr UserRootPowerKey, out IntPtr ActivePolicyGuid);
         [DllImport("powrprof.dll")]
         private static extern uint PowerSetActiveScheme(IntPtr UserRootPowerKey, ref Guid SchemeGuid);
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr OpenSCManagerW(string? lpMachineName, string? lpDatabaseName, uint dwDesiredAccess);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr OpenServiceW(IntPtr hSCManager, string lpServiceName, uint dwDesiredAccess);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool QueryServiceStatus(IntPtr hService, out SERVICE_STATUS lpServiceStatus);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool ControlService(IntPtr hService, uint dwControl, out SERVICE_STATUS lpServiceStatus);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool StartServiceW(IntPtr hService, int dwNumServiceArgs, IntPtr lpServiceArgVectors);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern bool CloseServiceHandle(IntPtr hSCObject);
+
+        private const uint SC_MANAGER_CONNECT = 0x0001;
+        private const uint SERVICE_QUERY_STATUS = 0x0004;
+        private const uint SERVICE_START = 0x0010;
+        private const uint SERVICE_STOP = 0x0020;
+        private const uint SERVICE_CONTROL_STOP = 0x00000001;
+        private const uint SERVICE_RUNNING = 0x00000004;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SERVICE_STATUS
+        {
+            public uint dwServiceType;
+            public uint dwCurrentState;
+            public uint dwControlsAccepted;
+            public uint dwWin32ExitCode;
+            public uint dwServiceSpecificExitCode;
+            public uint dwCheckPoint;
+            public uint dwWaitHint;
+        }
+
+        private static bool _pausedWindowsSearch;
 
         private const int RelationProcessorCore = 0;
         private const int SystemMemoryListInformation = 80;
@@ -233,7 +271,7 @@ namespace Overcapped_Optimizer.Core
             }
         }
 
-        public static void ApplyDeliveryOptimizationState(bool disableP2P)
+        public static void ApplyDeliveryOptimizationState(bool disableP2P, bool captureSnapshot = true)
         {
             if (!IsAdministrator())
                 throw new UnauthorizedAccessException("Administrator privileges are required.");
@@ -243,6 +281,12 @@ namespace Overcapped_Optimizer.Core
 
             try
             {
+                if (captureSnapshot)
+                {
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, policyPath, "DODownloadMode");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, configPath, "DODownloadMode");
+                }
+
                 if (disableP2P)
                 {
                     using (RegistryKey? policyKey = Registry.LocalMachine.CreateSubKey(policyPath, true))
@@ -352,7 +396,7 @@ namespace Overcapped_Optimizer.Core
             ApplyGpuPreference(game.ExecutablePath, game.HighPerfGpuBinding);
         }
 
-        public static void ApplyIfeoPriority(string executableName, bool high)
+        public static void ApplyIfeoPriority(string executableName, bool high, bool captureSnapshot = true)
         {
             if (!IsAdministrator() || string.IsNullOrWhiteSpace(executableName)) return;
 
@@ -361,6 +405,9 @@ namespace Overcapped_Optimizer.Core
 
             try
             {
+                if (captureSnapshot)
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, perfKeyPath, "CpuPriorityClass");
+
                 if (high)
                 {
                     using RegistryKey? key = Registry.LocalMachine.CreateSubKey(perfKeyPath, true);
@@ -375,13 +422,16 @@ namespace Overcapped_Optimizer.Core
             catch (Exception ex) { ExceptionHandler.LogError(ex); }
         }
 
-        public static void ApplyGpuPreference(string executablePath, bool highPerformance)
+        public static void ApplyGpuPreference(string executablePath, bool highPerformance, bool captureSnapshot = true)
         {
             if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath)) return;
 
             const string gpuPrefPath = @"Software\Microsoft\DirectX\UserGpuPreferences";
             try
             {
+                if (captureSnapshot)
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, gpuPrefPath, executablePath);
+
                 using RegistryKey? key = Registry.CurrentUser.CreateSubKey(gpuPrefPath, true);
                 if (key == null) return;
 
@@ -469,6 +519,7 @@ namespace Overcapped_Optimizer.Core
                               || AppSettings.Current.ThrottleBackgroundApps
                               || AppSettings.Current.PCoresOnly
                               || anyPerGameForceOn
+                              || AppSettings.Current.PauseWindowsSearchWhileGaming
                               || (AppSettings.Current.FpsOverlayEnabled && AppSettings.Current.AutoSaveSessionBenchmarks);
 
             if (!needsAutoOptimizer)
@@ -478,6 +529,7 @@ namespace Overcapped_Optimizer.Core
                     RestorePreviousPowerPlan();
                     RestoreThrottledProcesses();
                     RestorePinnedProcesses();
+                    ResumeWindowsSearchIfPaused();
                 }
 
                 if (_watchdogTimer != null)
@@ -604,6 +656,11 @@ namespace Overcapped_Optimizer.Core
                         ThrottleBackgroundProcesses(activeGameProcNames);
                     else
                         RestoreThrottledProcesses();
+
+                    if (runningGame != null && AppSettings.Current.PauseWindowsSearchWhileGaming)
+                        PauseWindowsSearchForGaming();
+                    else
+                        ResumeWindowsSearchIfPaused();
 
                     bool changed = !string.Equals(ActiveDetectedGameName, runningGameName, StringComparison.Ordinal)
                                 || ActiveDetectedGamePid != runningGamePid;
@@ -751,24 +808,37 @@ namespace Overcapped_Optimizer.Core
                 RestorePreviousPowerPlan();
                 RestoreThrottledProcesses();
                 RestorePinnedProcesses();
+                ResumeWindowsSearchIfPaused();
             }
         }
 
-        public static void ApplyGameModeAndDvr(bool optimize)
+        public static void ApplyGameModeAndDvr(bool optimize, bool captureSnapshot = true)
         {
+            const string gameBarPath = @"Software\Microsoft\GameBar";
+            const string dvrPath = @"Software\Microsoft\Windows\CurrentVersion\GameDVR";
+            const string storePath = @"System\GameConfigStore";
+
             try
             {
-                using (RegistryKey? gameBarKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\GameBar", true))
+                if (captureSnapshot)
+                {
+                    if (optimize)
+                        RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, gameBarPath, "AutoGameModeEnabled");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, dvrPath, "AppCaptureEnabled");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, storePath, "GameDVR_Enabled");
+                }
+
+                using (RegistryKey? gameBarKey = Registry.CurrentUser.CreateSubKey(gameBarPath, true))
                 {
                     if (optimize) gameBarKey?.SetValue("AutoGameModeEnabled", 1, RegistryValueKind.DWord);
                 }
 
-                using (RegistryKey? dvrKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\GameDVR", true))
+                using (RegistryKey? dvrKey = Registry.CurrentUser.CreateSubKey(dvrPath, true))
                 {
                     dvrKey?.SetValue("AppCaptureEnabled", optimize ? 0 : 1, RegistryValueKind.DWord);
                 }
 
-                using (RegistryKey? storeKey = Registry.CurrentUser.CreateSubKey(@"System\GameConfigStore", true))
+                using (RegistryKey? storeKey = Registry.CurrentUser.CreateSubKey(storePath, true))
                 {
                     storeKey?.SetValue("GameDVR_Enabled", optimize ? 0 : 1, RegistryValueKind.DWord);
                 }
@@ -776,11 +846,20 @@ namespace Overcapped_Optimizer.Core
             catch (Exception ex) { ExceptionHandler.LogError(ex); }
         }
 
-        public static void ApplyFSOState(bool disableFSO)
+        public static void ApplyFSOState(bool disableFSO, bool captureSnapshot = true)
         {
+            const string storePath = @"System\GameConfigStore";
             try
             {
-                using RegistryKey? key = Registry.CurrentUser.CreateSubKey(@"System\GameConfigStore", true);
+                if (captureSnapshot)
+                {
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, storePath, "GameDVR_FSEBehaviorMode");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, storePath, "GameDVR_HonorUserFSEBehaviorMode");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, storePath, "GameDVR_FSEBehavior");
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.CurrentUser, storePath, "GameDVR_DXGIHonorFSEWindowsCompatible");
+                }
+
+                using RegistryKey? key = Registry.CurrentUser.CreateSubKey(storePath, true);
                 if (key == null) return;
                 int target = disableFSO ? 2 : 0;
                 key.SetValue("GameDVR_FSEBehaviorMode", target, RegistryValueKind.DWord);
@@ -969,47 +1048,6 @@ namespace Overcapped_Optimizer.Core
             return (deleted, freedBytes / 1024.0 / 1024.0, skipped);
         }
 
-        public static int ApplyNicPowerOptimization(bool disablePowerSaving)
-        {
-            if (!IsAdministrator())
-                throw new UnauthorizedAccessException("Administrator privileges are required.");
-
-            var activeEthernetIds = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(n => n.NetworkInterfaceType == NetworkInterfaceType.Ethernet && n.OperationalStatus == OperationalStatus.Up)
-                .Select(n => n.Id)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            if (activeEthernetIds.Count == 0) return 0;
-
-            const string nicClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}";
-            string[] eeeNames = { "*EEE", "EEE", "EEELinkAdvertisement", "EnableGreenEthernet", "PowerSavingMode", "AdvancedEEE", "GigaLite", "ULPMode" };
-            int updated = 0;
-
-            using RegistryKey? classKey = Registry.LocalMachine.OpenSubKey(nicClassPath, true);
-            if (classKey == null) return 0;
-
-            foreach (string sub in classKey.GetSubKeyNames())
-            {
-                if (!int.TryParse(sub, out _)) continue;
-                using RegistryKey? adapterKey = classKey.OpenSubKey(sub, true);
-                if (adapterKey == null) continue;
-
-                string? id = adapterKey.GetValue("NetCfgInstanceId") as string;
-                if (string.IsNullOrEmpty(id) || !activeEthernetIds.Contains(id)) continue;
-
-                adapterKey.SetValue("PnPCapabilities", disablePowerSaving ? 24 : 0, RegistryValueKind.DWord);
-                foreach (string name in eeeNames)
-                {
-                    object? val = adapterKey.GetValue(name);
-                    if (val is int) adapterKey.SetValue(name, disablePowerSaving ? 0 : 1, RegistryValueKind.DWord);
-                    else if (val != null) adapterKey.SetValue(name, disablePowerSaving ? "0" : "1", RegistryValueKind.String);
-                }
-                updated++;
-            }
-
-            return updated;
-        }
-
         public static bool FlushDnsCache(out string output)
         {
             output = string.Empty;
@@ -1168,6 +1206,338 @@ namespace Overcapped_Optimizer.Core
             }
             catch { }
             return null;
+        }
+
+        private static void PauseWindowsSearchForGaming()
+        {
+            if (_pausedWindowsSearch || !IsAdministrator()) return;
+
+            IntPtr scm = OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+            if (scm == IntPtr.Zero) return;
+
+            IntPtr svc = IntPtr.Zero;
+            try
+            {
+                svc = OpenServiceW(scm, "WSearch", SERVICE_QUERY_STATUS | SERVICE_STOP);
+                if (svc == IntPtr.Zero) return;
+
+                if (QueryServiceStatus(svc, out SERVICE_STATUS status) && status.dwCurrentState == SERVICE_RUNNING)
+                {
+                    if (ControlService(svc, SERVICE_CONTROL_STOP, out _))
+                    {
+                        _pausedWindowsSearch = true;
+                        ExceptionHandler.LogMessage("[AutoOptimizer] Paused Windows Search (WSearch) while gaming.");
+                    }
+                }
+            }
+            catch (Exception ex) { ExceptionHandler.LogError(ex); }
+            finally
+            {
+                if (svc != IntPtr.Zero) CloseServiceHandle(svc);
+                CloseServiceHandle(scm);
+            }
+        }
+
+        private static void ResumeWindowsSearchIfPaused()
+        {
+            if (!_pausedWindowsSearch || !IsAdministrator()) return;
+
+            IntPtr scm = OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+            if (scm == IntPtr.Zero) return;
+
+            IntPtr svc = IntPtr.Zero;
+            try
+            {
+                svc = OpenServiceW(scm, "WSearch", SERVICE_QUERY_STATUS | SERVICE_START);
+                if (svc != IntPtr.Zero)
+                {
+                    StartServiceW(svc, 0, IntPtr.Zero);
+                    ExceptionHandler.LogMessage("[AutoOptimizer] Resumed Windows Search (WSearch) after gaming.");
+                }
+            }
+            catch (Exception ex) { ExceptionHandler.LogError(ex); }
+            finally
+            {
+                _pausedWindowsSearch = false;
+                if (svc != IntPtr.Zero) CloseServiceHandle(svc);
+                CloseServiceHandle(scm);
+            }
+        }
+
+        public static void ApplyHagsState(bool enable, bool captureSnapshot = true)
+        {
+            if (!IsAdministrator())
+                throw new UnauthorizedAccessException("Administrator privileges are required.");
+
+            const string path = @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
+            if (captureSnapshot)
+                RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, path, "HwSchMode");
+
+            using RegistryKey? key = Registry.LocalMachine.CreateSubKey(path, true);
+            key?.SetValue("HwSchMode", enable ? 2 : 1, RegistryValueKind.DWord);
+        }
+
+        public static void ResetHagsToWindowsDefault()
+        {
+            if (!IsAdministrator()) return;
+
+            const string path = @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
+            using RegistryKey? key = Registry.LocalMachine.OpenSubKey(path, true);
+            key?.DeleteValue("HwSchMode", false);
+        }
+
+        public static void ApplyWindowsTelemetryState(bool reduceTelemetry, bool captureSnapshot = true)
+        {
+            if (!IsAdministrator())
+                throw new UnauthorizedAccessException("Administrator privileges are required.");
+
+            const string policyPath = @"SOFTWARE\Policies\Microsoft\Windows\DataCollection";
+            if (captureSnapshot)
+                RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, policyPath, "AllowTelemetry");
+
+            if (reduceTelemetry)
+            {
+                using RegistryKey? key = Registry.LocalMachine.CreateSubKey(policyPath, true);
+                key?.SetValue("AllowTelemetry", 0, RegistryValueKind.DWord);
+            }
+            else
+            {
+                using RegistryKey? key = Registry.LocalMachine.OpenSubKey(policyPath, true);
+                key?.DeleteValue("AllowTelemetry", false);
+            }
+        }
+
+        public static int ApplyNicPowerOptimization(bool disablePowerSaving) =>
+            ApplyNicOptimizations(disablePowerSaving, AppSettings.Current.DisableInterruptModeration, AppSettings.Current.EnableNicRss);
+
+        public static int ApplyNicOptimizations(bool disablePowerSaving, bool disableInterruptModeration, bool enableRss, bool captureSnapshot = true)
+        {
+            if (!IsAdministrator())
+                throw new UnauthorizedAccessException("Administrator privileges are required.");
+
+            var activeEthernetIds = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.NetworkInterfaceType == NetworkInterfaceType.Ethernet && n.OperationalStatus == OperationalStatus.Up)
+                .Select(n => n.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (activeEthernetIds.Count == 0) return 0;
+
+            const string nicClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}";
+            string[] eeeNames = { "*EEE", "EEE", "EEELinkAdvertisement", "EnableGreenEthernet", "PowerSavingMode", "AdvancedEEE", "GigaLite", "ULPMode" };
+            string[] intModNames = { "*InterruptModeration", "InterruptModeration" };
+            string[] rssNames = { "*RSS", "RSS" };
+            int updated = 0;
+
+            using RegistryKey? classKey = Registry.LocalMachine.OpenSubKey(nicClassPath, true);
+            if (classKey == null) return 0;
+
+            foreach (string sub in classKey.GetSubKeyNames())
+            {
+                if (!int.TryParse(sub, out _)) continue;
+                string adapterSubKeyPath = $@"{nicClassPath}\{sub}";
+                using RegistryKey? adapterKey = classKey.OpenSubKey(sub, true);
+                if (adapterKey == null) continue;
+
+                string? id = adapterKey.GetValue("NetCfgInstanceId") as string;
+                if (string.IsNullOrEmpty(id) || !activeEthernetIds.Contains(id)) continue;
+
+                if (captureSnapshot)
+                    RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, adapterSubKeyPath, "PnPCapabilities");
+
+                adapterKey.SetValue("PnPCapabilities", disablePowerSaving ? 24 : 0, RegistryValueKind.DWord);
+
+                foreach (string name in eeeNames)
+                    SetExistingNicRegistryValue(adapterKey, adapterSubKeyPath, name, disablePowerSaving ? 0 : 1, captureSnapshot);
+
+                foreach (string name in intModNames)
+                    SetExistingNicRegistryValue(adapterKey, adapterSubKeyPath, name, disableInterruptModeration ? 0 : 1, captureSnapshot);
+
+                foreach (string name in rssNames)
+                    SetExistingNicRegistryValue(adapterKey, adapterSubKeyPath, name, enableRss ? 1 : 0, captureSnapshot);
+
+                updated++;
+            }
+
+            return updated;
+        }
+
+        private static void SetExistingNicRegistryValue(RegistryKey adapterKey, string adapterSubKeyPath, string valueName, int numericValue, bool captureSnapshot)
+        {
+            object? val = adapterKey.GetValue(valueName);
+            if (val == null) return;
+
+            if (captureSnapshot)
+                RegistrySnapshotStore.CaptureIfMissing(RegistryHive.LocalMachine, adapterSubKeyPath, valueName);
+
+            if (val is int)
+                adapterKey.SetValue(valueName, numericValue, RegistryValueKind.DWord);
+            else
+                adapterKey.SetValue(valueName, numericValue.ToString(), RegistryValueKind.String);
+        }
+
+        public static string RevertAllPermanentOptimizations(IEnumerable<GameProfile> games)
+        {
+            var summary = new StringBuilder();
+            bool isAdmin = IsAdministrator();
+            List<GameProfile> gameList = games.ToList();
+
+            RestoreAllRuntimeStates();
+            summary.AppendLine("• Restored runtime states (Power Plan, CPU affinity, throttled apps, Windows Search)");
+
+            SnapshotRestoreResult snap = RegistrySnapshotStore.RestoreAll(isAdmin);
+            if (snap.TotalRestored > 0)
+            {
+                summary.AppendLine($"• Restored {snap.TotalRestored} registry value(s) to their exact pre-Overcapped state ({snap.RestoredUserCount} user, {snap.RestoredMachineCount} system)");
+            }
+
+            if (snap.FailedCount > 0)
+            {
+                summary.AppendLine($"• Warning: {snap.FailedCount} snapshot entry/entries could not be restored (check log file)");
+            }
+
+            int legacyReverted = 0;
+
+            bool fsoWasInSnapshot = snap.RestoredCompositeKeys.Contains(
+                RegistrySnapshotStore.BuildCompositeKey(RegistryHive.CurrentUser, @"System\GameConfigStore", "GameDVR_FSEBehaviorMode"));
+            if (!fsoWasInSnapshot && AppSettings.Current.DisableFSO)
+            {
+                ApplyFSOState(false, captureSnapshot: false);
+                legacyReverted++;
+            }
+
+            bool dvrWasInSnapshot = snap.RestoredCompositeKeys.Contains(
+                RegistrySnapshotStore.BuildCompositeKey(RegistryHive.CurrentUser, @"System\GameConfigStore", "GameDVR_Enabled"));
+            if (!dvrWasInSnapshot && AppSettings.Current.GameModeAndDisableDvr)
+            {
+                ApplyGameModeAndDvr(false, captureSnapshot: false);
+                legacyReverted++;
+            }
+
+            foreach (GameProfile game in gameList)
+            {
+                if (!string.IsNullOrWhiteSpace(game.ExecutablePath) && game.HighPerfGpuBinding)
+                {
+                    string gpuKey = RegistrySnapshotStore.BuildCompositeKey(
+                        RegistryHive.CurrentUser, @"Software\Microsoft\DirectX\UserGpuPreferences", game.ExecutablePath);
+                    if (!snap.RestoredCompositeKeys.Contains(gpuKey))
+                    {
+                        ApplyGpuPreference(game.ExecutablePath, false, captureSnapshot: false);
+                        legacyReverted++;
+                    }
+                }
+                game.HighPerfGpuBinding = false;
+
+                if (isAdmin && !string.IsNullOrWhiteSpace(game.ExecutableName) && game.HighPriorityIfeo)
+                {
+                    string safeExe = Path.GetFileName(game.ExecutableName);
+                    string ifeoKey = RegistrySnapshotStore.BuildCompositeKey(
+                        RegistryHive.LocalMachine,
+                        $@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\{safeExe}\PerfOptions",
+                        "CpuPriorityClass");
+                    if (!snap.RestoredCompositeKeys.Contains(ifeoKey))
+                    {
+                        ApplyIfeoPriority(game.ExecutableName, false, captureSnapshot: false);
+                        legacyReverted++;
+                    }
+                }
+                game.HighPriorityIfeo = false;
+                game.QosDscpEnabled = false;
+            }
+
+            if (isAdmin)
+            {
+                bool anyNicInSnapshot = snap.RestoredCompositeKeys.Any(k =>
+                    k.StartsWith(@"HKLM|SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}\", StringComparison.OrdinalIgnoreCase));
+                if (!anyNicInSnapshot && (AppSettings.Current.DisableNicPowerSaving || AppSettings.Current.DisableInterruptModeration || !AppSettings.Current.EnableNicRss))
+                {
+                    try
+                    {
+                        ApplyNicOptimizations(disablePowerSaving: false, disableInterruptModeration: false, enableRss: true, captureSnapshot: false);
+                        legacyReverted++;
+                    }
+                    catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                }
+
+                bool doInSnapshot = snap.RestoredCompositeKeys.Contains(
+                    RegistrySnapshotStore.BuildCompositeKey(RegistryHive.LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization", "DODownloadMode"));
+                if (!doInSnapshot && AppSettings.Current.DisableDeliveryOptimization)
+                {
+                    try
+                    {
+                        ApplyDeliveryOptimizationState(false, captureSnapshot: false);
+                        legacyReverted++;
+                    }
+                    catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                }
+
+                bool telInSnapshot = snap.RestoredCompositeKeys.Contains(
+                    RegistrySnapshotStore.BuildCompositeKey(RegistryHive.LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\DataCollection", "AllowTelemetry"));
+                if (!telInSnapshot && AppSettings.Current.ReduceWindowsTelemetry)
+                {
+                    try
+                    {
+                        ApplyWindowsTelemetryState(false, captureSnapshot: false);
+                        legacyReverted++;
+                    }
+                    catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                }
+
+                int qosRemoved = 0;
+                try
+                {
+                    const string qosRoot = @"SOFTWARE\Policies\Microsoft\Windows\QoS";
+                    using RegistryKey? rootKey = Registry.LocalMachine.OpenSubKey(qosRoot, true);
+                    if (rootKey != null)
+                    {
+                        foreach (string sub in rootKey.GetSubKeyNames()
+                            .Where(n => n.StartsWith("OvercappedOptimizer_", StringComparison.OrdinalIgnoreCase))
+                            .ToList())
+                        {
+                            rootKey.DeleteSubKeyTree(sub, false);
+                            qosRemoved++;
+                        }
+                    }
+                }
+                catch (Exception ex) { ExceptionHandler.LogError(ex); }
+
+                if (qosRemoved > 0)
+                    summary.AppendLine($"• Removed {qosRemoved} Overcapped QoS DSCP 46 policy rule(s)");
+            }
+            else if (snap.SkippedAdminCount > 0)
+            {
+                summary.AppendLine($"• Kept {snap.SkippedAdminCount} Admin-level snapshot entry/entries intact — restart as Admin and revert again to restore them.");
+            }
+            else
+            {
+                summary.AppendLine("• Skipped Admin-level policies (run as Admin if you applied NIC, Delivery Opt, Telemetry, HAGS, IFEO, or QoS optimizations).");
+            }
+
+            if (legacyReverted > 0)
+            {
+                summary.AppendLine($"• Reverted {legacyReverted} pre-snapshot legacy tweak(s) to Windows defaults");
+            }
+
+            if (snap.TotalRestored == 0 && legacyReverted == 0 && snap.SkippedAdminCount == 0)
+            {
+                summary.AppendLine("• No modified permanent registry optimizations were recorded");
+            }
+
+            AppSettings.Current.PCoresOnly = false;
+            AppSettings.Current.AutoPowerPlan = false;
+            AppSettings.Current.GameModeAndDisableDvr = false;
+            AppSettings.Current.DisableFSO = false;
+            AppSettings.Current.ThrottleBackgroundApps = false;
+            AppSettings.Current.PauseWindowsSearchWhileGaming = false;
+            AppSettings.Current.ReduceWindowsTelemetry = false;
+            AppSettings.Current.DisableNicPowerSaving = false;
+            AppSettings.Current.DisableInterruptModeration = false;
+            AppSettings.Current.EnableNicRss = true;
+            AppSettings.Current.DisableDeliveryOptimization = false;
+            AppSettings.Save();
+
+            SyncAutoOptimizer();
+
+            return summary.ToString().TrimEnd();
         }
     }
 }

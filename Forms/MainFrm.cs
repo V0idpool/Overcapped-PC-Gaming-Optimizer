@@ -20,7 +20,7 @@ namespace Overcapped_Optimizer
     public partial class MainFrm : Form
     {
         public static MainFrm? Instance { get; private set; }
-        private string GetVersionString() => AppVersion != null ? $"{AppVersion.Major}.{AppVersion.Minor}" : "1.1";
+        private string GetVersionString() => AppVersion != null ? $"{AppVersion.Major}.{AppVersion.Minor}" : "2.2";
         public System.Windows.Forms.Timer? autoFlushTimer;
         public NotifyIcon? sysTrayIcon;
         private DashboardOpacityOverlay? _dashboardOpacityOverlay;
@@ -84,6 +84,9 @@ namespace Overcapped_Optimizer
                 autoPowerPlanToggle.Checked = AppSettings.Current.AutoPowerPlan;
                 gameModeDvrToggle.Checked = AppSettings.Current.GameModeAndDisableDvr;
                 disabledFSO.Checked = AppSettings.Current.DisableFSO;
+                hagsToggle.Checked = HardwareDetector.IsHagsEnabled();
+                pauseSearchToggle.Checked = isAdmin && AppSettings.Current.PauseWindowsSearchWhileGaming;
+                telemetryToggle.Checked = AppSettings.Current.ReduceWindowsTelemetry;
                 throttleAppsToggle.Checked = AppSettings.Current.ThrottleBackgroundApps;
                 autoFlushChk.Checked = isAdmin && AppSettings.Current.AutoFlushEnabled;
                 smartFlushToggle.Checked = AppSettings.Current.SmartFlushEnabled;
@@ -92,6 +95,8 @@ namespace Overcapped_Optimizer
                 autoFlushMinHour.Text = AppSettings.Current.AutoFlushUnit.Equals("Hours", StringComparison.OrdinalIgnoreCase) ? "Hours" : "Minutes";
                 autoFlushSound.Checked = AppSettings.Current.AutoFlushSfx;
                 disableNicPowerToggle.Checked = AppSettings.Current.DisableNicPowerSaving;
+                disableIntModToggle.Checked = AppSettings.Current.DisableInterruptModeration;
+                enableRssToggle.Checked = AppSettings.Current.EnableNicRss;
                 deliveryOptToggle.Checked = AppSettings.Current.DisableDeliveryOptimization;
                 txtServerIp.Text = AppSettings.Current.LastPingServer;
                 pCoresToggle.Checked = AppSettings.Current.PCoresOnly;
@@ -197,7 +202,7 @@ namespace Overcapped_Optimizer
 
         private async Task RefreshHardwareHealthWarnings()
         {
-            lblHealthStatus.Text = "Scanning monitor Hz, RAM speed, power plan & drive...";
+            lblHealthStatus.Text = "Scanning monitor Hz, RAM, Page File, ReBAR, HAGS & drive...";
             lblHealthStatus.DotColor = GUI.ROPalette.TextSecondary;
 
             try
@@ -210,7 +215,7 @@ namespace Overcapped_Optimizer
                 if (warnings.Count == 0)
                 {
                     lblHealthStatus.DotColor = GUI.ROPalette.HudGreen;
-                    lblHealthStatus.Text = "All checks passed (Monitor Hz, RAM XMP/Channel, Power Plan, Storage)";
+                    lblHealthStatus.Text = "All checks passed (Hz, RAM/Page File, ReBAR, HAGS, Power & Storage)";
                     btnHealthDetails.Text = "Rescan";
                 }
                 else
@@ -242,7 +247,7 @@ namespace Overcapped_Optimizer
                 if (_healthWarnings.Count == 0)
                 {
                     MessageBox.Show(
-                        "No hardware misconfigurations detected!\n\nChecked:\n• Display refresh rates vs. maximum supported Hz\n• RAM XMP / DOCP / EXPO speed & dual-channel status\n• Windows Power Saver plan check\n• System drive free space for pagefile & shader cache",
+                        "No hardware misconfigurations detected!\n\nChecked:\n• Display refresh rates vs. maximum supported Hz\n• RAM XMP / DOCP / EXPO speed & dual-channel status\n• Windows Page File status & size\n• GPU Resizable BAR / Smart Access Memory (SAM)\n• Hardware-Accelerated GPU Scheduling (HAGS) & Game Mode\n• Windows Power Saver plan check\n• System drive free space for pagefile & shader cache",
                         "Hardware Health Check",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -340,6 +345,75 @@ namespace Overcapped_Optimizer
                     btnDashRestorePoint.Enabled = true;
                 }
             }
+        }
+
+        private void btnDashRevertOptimizations_Click(object? sender, EventArgs e)
+        {
+            bool isAdmin = Optimizer.IsAdministrator();
+
+            if (!isAdmin)
+            {
+                DialogResult choice = MessageBox.Show(
+                    "Full revert of Admin-level optimizations (NIC EEE / Interrupt Moderation / RSS, Delivery Optimization, Telemetry, HAGS, IFEO CPU Priorities, and QoS DSCP 46 rules) requires Administrator privileges.\n\n" +
+                    "• Click YES to restart as Administrator for a full revert.\n" +
+                    "• Click NO to revert per-user & runtime optimizations only.\n" +
+                    "• Click CANCEL to do nothing.",
+                    "Revert All Permanent Optimizations",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning);
+
+                if (choice == DialogResult.Cancel) return;
+                if (choice == DialogResult.Yes)
+                {
+                    Optimizer.RestartAsAdministrator();
+                    return;
+                }
+            }
+            else
+            {
+                if (MessageBox.Show(
+                     "Revert all Windows, Network, and Per-Game Registry optimizations applied by Overcapped back to your original pre-Overcapped settings?\n\n" +
+                     "Overcapped replays the exact values captured before it modified your registry.\n\n" +
+                     "(Your game config files and backups will not be touched.)",
+                     "Confirm Revert All Optimizations",
+                     MessageBoxButtons.YesNo,
+                     MessageBoxIcon.Warning) != DialogResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            string report = Optimizer.RevertAllPermanentOptimizations(AppSettings.Current.Games);
+
+            _isLoadingUi = true;
+            try
+            {
+                pCoresToggle.Checked = false;
+                autoPowerPlanToggle.Checked = false;
+                gameModeDvrToggle.Checked = false;
+                disabledFSO.Checked = false;
+                throttleAppsToggle.Checked = false;
+                pauseSearchToggle.Checked = false;
+                telemetryToggle.Checked = false;
+                hagsToggle.Checked = HardwareDetector.IsHagsEnabled();
+                disableNicPowerToggle.Checked = false;
+                disableIntModToggle.Checked = false;
+                enableRssToggle.Checked = true;
+                deliveryOptToggle.Checked = false;
+            }
+            finally
+            {
+                _isLoadingUi = false;
+            }
+
+            LoadSelectedGameIntoUi();
+            _ = RefreshHardwareHealthWarnings();
+
+            MessageBox.Show(
+                $"Revert complete:\n\n{report}\n\nNote: Reboot Windows (or reconnect Ethernet) for HAGS and NIC driver defaults to fully reload.",
+                "Optimizations Reverted",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         private void GameChanged(string? runningGameName)
@@ -761,7 +835,10 @@ namespace Overcapped_Optimizer
 
             int copied = 0;
             foreach (string file in Directory.GetFiles(game.ConfigDirectory, "*.*")
-                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".config", StringComparison.OrdinalIgnoreCase)))
+                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".config", StringComparison.OrdinalIgnoreCase)))
             {
                 File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: true);
                 copied++;
@@ -789,7 +866,10 @@ namespace Overcapped_Optimizer
 
             int restored = 0;
             foreach (string file in Directory.GetFiles(fbd.SelectedPath, "*.*")
-                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase)))
+                .Where(f => f.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".config", StringComparison.OrdinalIgnoreCase)))
             {
                 File.Copy(file, Path.Combine(game.ConfigDirectory, Path.GetFileName(file)), overwrite: true);
                 restored++;
@@ -900,18 +980,33 @@ namespace Overcapped_Optimizer
         private void saveAdvancedCfgBtn_Click(object? sender, EventArgs e)
         {
             bool isAdmin = Optimizer.IsAdministrator();
+            bool hagsChanged = hagsToggle.Checked != HardwareDetector.IsHagsEnabled();
+            bool telemetryChanged = telemetryToggle.Checked != AppSettings.Current.ReduceWindowsTelemetry;
+            bool pauseSearchRequested = pauseSearchToggle.Checked;
 
-            if (autoFlushChk.Checked && !isAdmin)
+            bool needsAdmin = autoFlushChk.Checked || pauseSearchRequested || hagsChanged || telemetryChanged;
+
+            if (needsAdmin && !isAdmin)
             {
-                if (MessageBox.Show("Auto-Flush requires Administrator privileges.\n\nRestart as Administrator now?",
-                    "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
+                if (MessageBox.Show(
+                    "Auto-Flush, HAGS, Windows Telemetry Policy, and Pausing Windows Search require Administrator privileges.\n\nRestart as Administrator now?",
+                    "Administrator Required",
+                    MessageBoxButtons.OKCancel,
+                    MessageBoxIcon.Warning) == DialogResult.OK)
                 {
-                    AppSettings.Current.AutoFlushEnabled = true;
+                    AppSettings.Current.AutoFlushEnabled = autoFlushChk.Checked;
+                    AppSettings.Current.PauseWindowsSearchWhileGaming = pauseSearchRequested;
                     AppSettings.Save();
                     Optimizer.RestartAsAdministrator();
                     return;
                 }
+
                 autoFlushChk.Checked = false;
+                pauseSearchToggle.Checked = false;
+                hagsToggle.Checked = HardwareDetector.IsHagsEnabled();
+                telemetryToggle.Checked = AppSettings.Current.ReduceWindowsTelemetry;
+                hagsChanged = false;
+                telemetryChanged = false;
             }
 
             AppSettings.Current.AutoPowerPlan = autoPowerPlanToggle.Checked;
@@ -921,6 +1016,8 @@ namespace Overcapped_Optimizer
             if (isAdmin)
             {
                 AppSettings.Current.AutoFlushEnabled = autoFlushChk.Checked;
+                AppSettings.Current.PauseWindowsSearchWhileGaming = pauseSearchToggle.Checked;
+                AppSettings.Current.ReduceWindowsTelemetry = telemetryToggle.Checked;
             }
             AppSettings.Current.SmartFlushEnabled = smartFlushToggle.Checked;
             AppSettings.Current.SmartFlushThresholdGB = (int)smartFlushThreshold.Value;
@@ -933,13 +1030,42 @@ namespace Overcapped_Optimizer
 
             Optimizer.ApplyFSOState(AppSettings.Current.DisableFSO);
             Optimizer.ApplyGameModeAndDvr(AppSettings.Current.GameModeAndDisableDvr);
-            Optimizer.SyncAutoOptimizer();
+
+            bool appliedHags = false;
             if (isAdmin)
             {
+                if (hagsChanged)
+                {
+                    try
+                    {
+                        Optimizer.ApplyHagsState(hagsToggle.Checked);
+                        appliedHags = true;
+                    }
+                    catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                }
+
+                if (telemetryChanged)
+                {
+                    try
+                    {
+                        Optimizer.ApplyWindowsTelemetryState(AppSettings.Current.ReduceWindowsTelemetry);
+                    }
+                    catch (Exception ex) { ExceptionHandler.LogError(ex); }
+                }
+
                 Optimizer.InitializeAutoFlushTimer();
             }
 
-            MessageBox.Show("Global settings saved and applied!", "Overcapped Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Optimizer.SyncAutoOptimizer();
+            _ = RefreshHardwareHealthWarnings();
+
+            string msg = "Global settings saved and applied!";
+            if (appliedHags)
+            {
+                msg += $"\n\nHardware-Accelerated GPU Scheduling (HAGS) set to {(hagsToggle.Checked ? "ON" : "OFF")}. A Windows reboot is required for HAGS changes to take effect.";
+            }
+
+            MessageBox.Show(msg, "Overcapped Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void flushRamToolStripMenuItem_Click(object? sender, EventArgs e)
@@ -984,7 +1110,7 @@ namespace Overcapped_Optimizer
         {
             if (!Optimizer.IsAdministrator())
             {
-                if (MessageBox.Show("NIC power optimizations, Delivery Optimization policy, and QoS DSCP policies require Administrator privileges.\n\nRestart as Administrator now?",
+                if (MessageBox.Show("NIC adapter tuning, Delivery Optimization policy, and QoS DSCP policies require Administrator privileges.\n\nRestart as Administrator now?",
                     "Administrator Required", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) == DialogResult.OK)
                 {
                     Optimizer.RestartAsAdministrator();
@@ -994,8 +1120,14 @@ namespace Overcapped_Optimizer
 
             try
             {
-                int adapters = Optimizer.ApplyNicPowerOptimization(disableNicPowerToggle.Checked);
+                int adapters = Optimizer.ApplyNicOptimizations(
+                    disableNicPowerToggle.Checked,
+                    disableIntModToggle.Checked,
+                    enableRssToggle.Checked);
+
                 AppSettings.Current.DisableNicPowerSaving = disableNicPowerToggle.Checked;
+                AppSettings.Current.DisableInterruptModeration = disableIntModToggle.Checked;
+                AppSettings.Current.EnableNicRss = enableRssToggle.Checked;
 
                 Optimizer.ApplyDeliveryOptimizationState(deliveryOptToggle.Checked);
                 AppSettings.Current.DisableDeliveryOptimization = deliveryOptToggle.Checked;
@@ -1010,7 +1142,14 @@ namespace Overcapped_Optimizer
 
                 AppSettings.Save();
                 MessageBox.Show(
-                    $"Network optimizations applied!\n\n- Active Ethernet NICs updated: {adapters}\n- Delivery Optimization P2P: {(deliveryOptToggle.Checked ? "Disabled (HTTP Only)" : "Windows Default")}\n- QoS Policy: {qosNote}",
+                    $"Network optimizations applied!\n\n" +
+                    $"- Active Ethernet NICs updated: {adapters}\n" +
+                    $"- NIC Power Saving / EEE: {(disableNicPowerToggle.Checked ? "Disabled" : "Windows Default")}\n" +
+                    $"- Interrupt Moderation: {(disableIntModToggle.Checked ? "Disabled (Low Latency)" : "Enabled (Default)")}\n" +
+                    $"- Receive Side Scaling (RSS): {(enableRssToggle.Checked ? "Enabled" : "Disabled")}\n" +
+                    $"- Delivery Optimization P2P: {(deliveryOptToggle.Checked ? "Disabled (HTTP Only)" : "Windows Default")}\n" +
+                    $"- QoS Policy: {qosNote}\n\n" +
+                    "Reconnect Ethernet or reboot for NIC registry changes to take effect.",
                     "Network Optimizations Applied", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -1538,21 +1677,23 @@ namespace Overcapped_Optimizer
             BeginHotkeyCapture(txtHkToggleWindow, btnBindHkWindow);
         }
 
-        private void btnClearHkFps_Click(object? sender, EventArgs e) 
-        { 
-            CancelHotkeyCapture(); txtHkFpsOverlay.Text = HotkeyUnboundLabel; 
+        private void btnClearHkFps_Click(object? sender, EventArgs e)
+        {
+            CancelHotkeyCapture(); txtHkFpsOverlay.Text = HotkeyUnboundLabel;
         }
 
         private void btnClearHk1Low_Click(object? sender, EventArgs e)
-        { 
-            CancelHotkeyCapture(); txtHk1PercentLow.Text = HotkeyUnboundLabel; 
+        {
+            CancelHotkeyCapture(); txtHk1PercentLow.Text = HotkeyUnboundLabel;
         }
+
         private void btnClearHkFlush_Click(object? sender, EventArgs e)
-        { 
-            CancelHotkeyCapture(); txtHkFlushRam.Text = HotkeyUnboundLabel; 
+        {
+            CancelHotkeyCapture(); txtHkFlushRam.Text = HotkeyUnboundLabel;
         }
+
         private void btnClearHkWindow_Click(object? sender, EventArgs e)
-        { 
+        {
             CancelHotkeyCapture(); txtHkToggleWindow.Text = HotkeyUnboundLabel;
         }
 

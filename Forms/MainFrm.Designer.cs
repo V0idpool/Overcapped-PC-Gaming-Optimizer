@@ -24,6 +24,20 @@ namespace Overcapped_Optimizer
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainFrm));
             roThemeContainer1 = new ROThemeContainer();
             pnlContent = new Panel();
+            pnlAbout = new Panel();
+            grpLinks = new ROGroupBox();
+            cardPanel = new Panel();
+            roLabel2 = new ROLabel();
+            lblDescription = new Label();
+            linkWebsite = new AboutLinkTile();
+            aboutLinkTile1 = new AboutLinkTile();
+            linkDocs = new AboutLinkTile();
+            linkDiscord = new AboutLinkTile();
+            linkGitHub = new AboutLinkTile();
+            grpDiagnostics = new ROGroupBox();
+            btnOpenLog = new ROModernButton();
+            btnOpenLogDir = new ROModernButton();
+            btnOpenSettingsDir = new ROModernButton();
             pnlDashboard = new Panel();
             grpGameLibrary = new ROGroupBox();
             gameDropdown = new ROComboBox();
@@ -42,6 +56,7 @@ namespace Overcapped_Optimizer
             cardQuickFlush = new ROActionCard();
             cardQuickShaderCache = new ROActionCard();
             btnDashRestorePoint = new ROModernButton();
+            btnDashRevertOptimizations = new ROModernButton();
             btnDashTray = new ROModernButton();
             pnlHotkeys = new Panel();
             grpHotkeys = new ROGroupBox();
@@ -80,18 +95,27 @@ namespace Overcapped_Optimizer
             lblPCoresTitle = new Label();
             lblPCoresDesc = new Label();
             pCoresToggle = new ROToggle();
-            sepTool1 = new ROSeparator();
             lblPowerPlanTitle = new Label();
             lblPowerPlanDesc = new Label();
             autoPowerPlanToggle = new ROToggle();
-            sepTool2 = new ROSeparator();
+            sepTool1 = new ROSeparator();
             lblGameModeTitle = new Label();
             lblGameModeDesc = new Label();
             gameModeDvrToggle = new ROToggle();
-            sepTool3 = new ROSeparator();
             lblFsoTitle = new Label();
             lblFsoDesc = new Label();
             disabledFSO = new ROToggle();
+            sepTool2 = new ROSeparator();
+            lblHagsTitle = new Label();
+            lblHagsDesc = new Label();
+            hagsToggle = new ROToggle();
+            lblTelemetryTitle = new Label();
+            lblTelemetryDesc = new Label();
+            telemetryToggle = new ROToggle();
+            sepTool3 = new ROSeparator();
+            lblPauseSearchTitle = new Label();
+            lblPauseSearchDesc = new Label();
+            pauseSearchToggle = new ROToggle();
             sepTool4 = new ROSeparator();
             lblThrottleTitle = new Label();
             lblThrottleDesc = new Label();
@@ -140,30 +164,23 @@ namespace Overcapped_Optimizer
             btnOpenPacksFolder = new ROModernButton();
             btnGameAutoOptimizes = new ROModernButton();
             btnPackBuilder = new ROModernButton();
-            pnlAbout = new Panel();
-            grpLinks = new ROGroupBox();
-            cardPanel = new Panel();
-            roLabel2 = new ROLabel();
-            lblDescription = new Label();
-            linkWebsite = new AboutLinkTile();
-            aboutLinkTile1 = new AboutLinkTile();
-            linkDocs = new AboutLinkTile();
-            linkDiscord = new AboutLinkTile();
-            linkGitHub = new AboutLinkTile();
-            grpDiagnostics = new ROGroupBox();
-            btnOpenLog = new ROModernButton();
-            btnOpenLogDir = new ROModernButton();
-            btnOpenSettingsDir = new ROModernButton();
             pnlNetwork = new Panel();
             grpNetworkOptimzations = new ROGroupBox();
             lblNicPowerTitle = new Label();
             lblNicPowerDesc = new Label();
             disableNicPowerToggle = new ROToggle();
             sepNet1 = new ROSeparator();
+            lblIntModTitle = new Label();
+            lblIntModDesc = new Label();
+            disableIntModToggle = new ROToggle();
+            lblRssTitle = new Label();
+            lblRssDesc = new Label();
+            enableRssToggle = new ROToggle();
+            sepNet2 = new ROSeparator();
             lblQosTitle = new Label();
             lblQosDesc = new Label();
             qosDscpToggle = new ROToggle();
-            sepNet2 = new ROSeparator();
+            sepNet3 = new ROSeparator();
             lblDeliveryOptTitle = new Label();
             lblDeliveryOptDesc = new Label();
             deliveryOptToggle = new ROToggle();
@@ -222,6 +239,7 @@ namespace Overcapped_Optimizer
             addGameToolStripMenuItem = new ToolStripMenuItem();
             openPacksToolStripMenuItem = new ToolStripMenuItem();
             packBuilderToolStripMenuItem = new ToolStripMenuItem();
+            revertAllOptimizationsToolStripMenuItem = new ToolStripMenuItem();
             toolStripSeparator1 = new ToolStripSeparator();
             exitToolStripMenuItem1 = new ToolStripMenuItem();
             aboutToolStripMenuItem = new ToolStripMenuItem();
@@ -234,6 +252,10 @@ namespace Overcapped_Optimizer
             minimizeToTrayToolStripMenuItem = new ToolStripMenuItem();
             roThemeContainer1.SuspendLayout();
             pnlContent.SuspendLayout();
+            pnlAbout.SuspendLayout();
+            grpLinks.SuspendLayout();
+            cardPanel.SuspendLayout();
+            grpDiagnostics.SuspendLayout();
             pnlDashboard.SuspendLayout();
             grpGameLibrary.SuspendLayout();
             grpHardware.SuspendLayout();
@@ -246,10 +268,6 @@ namespace Overcapped_Optimizer
             pnlProfiles.SuspendLayout();
             grpProfiles.SuspendLayout();
             grpPerGameOptimzations.SuspendLayout();
-            pnlAbout.SuspendLayout();
-            grpLinks.SuspendLayout();
-            cardPanel.SuspendLayout();
-            grpDiagnostics.SuspendLayout();
             pnlNetwork.SuspendLayout();
             grpNetworkOptimzations.SuspendLayout();
             grpPingMonitor.SuspendLayout();
@@ -276,7 +294,7 @@ namespace Overcapped_Optimizer
             roThemeContainer1.Size = new Size(920, 600);
             roThemeContainer1.SmartBounds = true;
             roThemeContainer1.StartPosition = FormStartPosition.CenterScreen;
-            roThemeContainer1.SubHeader = "v2.1";
+            roThemeContainer1.SubHeader = "v2.2";
             roThemeContainer1.TabIndex = 0;
             roThemeContainer1.Text = "OVERCAPPED OPTIMIZER";
             roThemeContainer1.TransparencyKey = Color.Empty;
@@ -285,8 +303,8 @@ namespace Overcapped_Optimizer
             // pnlContent
             // 
             pnlContent.BackColor = Color.FromArgb(9, 9, 12);
-            pnlContent.Controls.Add(pnlAbout);
             pnlContent.Controls.Add(pnlDashboard);
+            pnlContent.Controls.Add(pnlAbout);
             pnlContent.Controls.Add(pnlHotkeys);
             pnlContent.Controls.Add(pnlTools);
             pnlContent.Controls.Add(pnlProfiles);
@@ -296,6 +314,183 @@ namespace Overcapped_Optimizer
             pnlContent.Name = "pnlContent";
             pnlContent.Size = new Size(705, 525);
             pnlContent.TabIndex = 0;
+            // 
+            // pnlAbout
+            // 
+            pnlAbout.BackColor = Color.FromArgb(9, 9, 12);
+            pnlAbout.Controls.Add(grpLinks);
+            pnlAbout.Controls.Add(grpDiagnostics);
+            pnlAbout.Dock = DockStyle.Fill;
+            pnlAbout.Location = new Point(0, 0);
+            pnlAbout.Name = "pnlAbout";
+            pnlAbout.Size = new Size(705, 525);
+            pnlAbout.TabIndex = 5;
+            pnlAbout.Visible = false;
+            // 
+            // grpLinks
+            // 
+            grpLinks.BackColor = Color.Transparent;
+            grpLinks.Controls.Add(cardPanel);
+            grpLinks.Controls.Add(linkWebsite);
+            grpLinks.Controls.Add(aboutLinkTile1);
+            grpLinks.Controls.Add(linkDocs);
+            grpLinks.Controls.Add(linkDiscord);
+            grpLinks.Controls.Add(linkGitHub);
+            grpLinks.Font = new Font("Segoe UI", 9.5F);
+            grpLinks.Location = new Point(16, 14);
+            grpLinks.Name = "grpLinks";
+            grpLinks.Padding = new Padding(14, 44, 14, 14);
+            grpLinks.Size = new Size(673, 380);
+            grpLinks.SubTitle = "About Overcapped Optimizer";
+            grpLinks.TabIndex = 0;
+            grpLinks.Title = "About";
+            // 
+            // cardPanel
+            // 
+            cardPanel.BackColor = Color.FromArgb(22, 22, 29);
+            cardPanel.Controls.Add(roLabel2);
+            cardPanel.Controls.Add(lblDescription);
+            cardPanel.Location = new Point(20, 41);
+            cardPanel.Name = "cardPanel";
+            cardPanel.Padding = new Padding(16);
+            cardPanel.Size = new Size(636, 112);
+            cardPanel.TabIndex = 0;
+            // 
+            // roLabel2
+            // 
+            roLabel2.BackColor = Color.Transparent;
+            roLabel2.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
+            roLabel2.Location = new Point(18, 5);
+            roLabel2.Name = "roLabel2";
+            roLabel2.Size = new Size(200, 24);
+            roLabel2.TabIndex = 0;
+            roLabel2.Value1 = "Overcapped";
+            roLabel2.Value2 = " Optimizer";
+            // 
+            // lblDescription
+            // 
+            lblDescription.Font = new Font("Segoe UI", 9F);
+            lblDescription.ForeColor = Color.FromArgb(162, 162, 176);
+            lblDescription.Location = new Point(18, 31);
+            lblDescription.Name = "lblDescription";
+            lblDescription.Size = new Size(601, 76);
+            lblDescription.TabIndex = 1;
+            lblDescription.Text = resources.GetString("lblDescription.Text");
+            // 
+            // linkWebsite
+            // 
+            linkWebsite.BackColor = Color.Transparent;
+            linkWebsite.Icon = Properties.Resources.docs;
+            linkWebsite.Location = new Point(20, 233);
+            linkWebsite.Name = "linkWebsite";
+            linkWebsite.Size = new Size(315, 62);
+            linkWebsite.TabIndex = 1;
+            linkWebsite.Title = "Overcapped Documentation";
+            linkWebsite.Url = "https://overcapped.us/docs";
+            // 
+            // aboutLinkTile1
+            // 
+            aboutLinkTile1.BackColor = Color.Transparent;
+            aboutLinkTile1.Icon = Properties.Resources.cup;
+            aboutLinkTile1.Location = new Point(342, 301);
+            aboutLinkTile1.Name = "aboutLinkTile1";
+            aboutLinkTile1.Size = new Size(315, 62);
+            aboutLinkTile1.TabIndex = 2;
+            aboutLinkTile1.Title = "Donations";
+            aboutLinkTile1.Url = "https://buymeacoffee.com/rustforgedev";
+            // 
+            // linkDocs
+            // 
+            linkDocs.BackColor = Color.Transparent;
+            linkDocs.Icon = Properties.Resources.OptimizerLogo;
+            linkDocs.Location = new Point(20, 159);
+            linkDocs.Name = "linkDocs";
+            linkDocs.Size = new Size(636, 62);
+            linkDocs.TabIndex = 3;
+            linkDocs.Title = "Overcapped Optimizer Site";
+            linkDocs.Url = "https://overcapped.us/";
+            // 
+            // linkDiscord
+            // 
+            linkDiscord.BackColor = Color.Transparent;
+            linkDiscord.Icon = Properties.Resources.discord;
+            linkDiscord.Location = new Point(20, 301);
+            linkDiscord.Name = "linkDiscord";
+            linkDiscord.Size = new Size(315, 62);
+            linkDiscord.TabIndex = 4;
+            linkDiscord.Title = "Discord Support";
+            linkDiscord.Url = "https://overcapped.us/invite";
+            // 
+            // linkGitHub
+            // 
+            linkGitHub.BackColor = Color.Transparent;
+            linkGitHub.Icon = Properties.Resources.github;
+            linkGitHub.Location = new Point(342, 233);
+            linkGitHub.Name = "linkGitHub";
+            linkGitHub.Size = new Size(315, 62);
+            linkGitHub.TabIndex = 5;
+            linkGitHub.Title = "GitHub Source";
+            linkGitHub.Url = "https://github.com/V0idpool/Overcapped-PC-Gaming-Optimizer";
+            // 
+            // grpDiagnostics
+            // 
+            grpDiagnostics.BackColor = Color.Transparent;
+            grpDiagnostics.Controls.Add(btnOpenLog);
+            grpDiagnostics.Controls.Add(btnOpenLogDir);
+            grpDiagnostics.Controls.Add(btnOpenSettingsDir);
+            grpDiagnostics.Font = new Font("Segoe UI", 9.5F);
+            grpDiagnostics.Location = new Point(16, 400);
+            grpDiagnostics.Name = "grpDiagnostics";
+            grpDiagnostics.Padding = new Padding(14, 44, 14, 14);
+            grpDiagnostics.Size = new Size(673, 114);
+            grpDiagnostics.SubTitle = "Quick access to logs, settings.json & JSON packs";
+            grpDiagnostics.TabIndex = 1;
+            grpDiagnostics.Title = "Diagnostics & Config Files";
+            // 
+            // btnOpenLog
+            // 
+            btnOpenLog.AccentColor = Color.FromArgb(214, 28, 52);
+            btnOpenLog.BackColor = Color.Transparent;
+            btnOpenLog.CornerRadius = 5;
+            btnOpenLog.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnOpenLog.ForeColor = Color.FromArgb(242, 242, 246);
+            btnOpenLog.IsPrimaryAction = false;
+            btnOpenLog.Location = new Point(14, 54);
+            btnOpenLog.Name = "btnOpenLog";
+            btnOpenLog.Size = new Size(206, 38);
+            btnOpenLog.TabIndex = 0;
+            btnOpenLog.Text = "Open Log File";
+            btnOpenLog.Click += openLogFileToolStripMenuItem_Click;
+            // 
+            // btnOpenLogDir
+            // 
+            btnOpenLogDir.AccentColor = Color.FromArgb(214, 28, 52);
+            btnOpenLogDir.BackColor = Color.Transparent;
+            btnOpenLogDir.CornerRadius = 5;
+            btnOpenLogDir.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnOpenLogDir.ForeColor = Color.FromArgb(242, 242, 246);
+            btnOpenLogDir.IsPrimaryAction = false;
+            btnOpenLogDir.Location = new Point(232, 54);
+            btnOpenLogDir.Name = "btnOpenLogDir";
+            btnOpenLogDir.Size = new Size(206, 38);
+            btnOpenLogDir.TabIndex = 1;
+            btnOpenLogDir.Text = "Open Logs Folder";
+            btnOpenLogDir.Click += openLogFilePathToolStripMenuItem_Click;
+            // 
+            // btnOpenSettingsDir
+            // 
+            btnOpenSettingsDir.AccentColor = Color.FromArgb(214, 28, 52);
+            btnOpenSettingsDir.BackColor = Color.Transparent;
+            btnOpenSettingsDir.CornerRadius = 5;
+            btnOpenSettingsDir.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            btnOpenSettingsDir.ForeColor = Color.FromArgb(242, 242, 246);
+            btnOpenSettingsDir.IsPrimaryAction = false;
+            btnOpenSettingsDir.Location = new Point(450, 54);
+            btnOpenSettingsDir.Name = "btnOpenSettingsDir";
+            btnOpenSettingsDir.Size = new Size(209, 38);
+            btnOpenSettingsDir.TabIndex = 2;
+            btnOpenSettingsDir.Text = "Open Data Folder";
+            btnOpenSettingsDir.Click += openSettingsFilePathToolStripMenuItem_Click;
             // 
             // pnlDashboard
             // 
@@ -322,7 +517,7 @@ namespace Overcapped_Optimizer
             grpGameLibrary.Name = "grpGameLibrary";
             grpGameLibrary.Padding = new Padding(14, 44, 14, 14);
             grpGameLibrary.Size = new Size(673, 114);
-            grpGameLibrary.SubTitle = "Steam, Epic & manual .exe detection";
+            grpGameLibrary.SubTitle = "Steam, Epic, GOG, Xbox, Battle.net, EA & manual .exe detection";
             grpGameLibrary.TabIndex = 0;
             grpGameLibrary.Title = "Game Library";
             // 
@@ -393,7 +588,7 @@ namespace Overcapped_Optimizer
             lblSelectedGameMeta.Name = "lblSelectedGameMeta";
             lblSelectedGameMeta.Size = new Size(642, 18);
             lblSelectedGameMeta.TabIndex = 4;
-            lblSelectedGameMeta.Text = "Click Scan Games to detect installed Steam / Epic titles, or Add .exe manually.";
+            lblSelectedGameMeta.Text = "Click Scan Games to detect installed titles, or Add .exe manually.";
             // 
             // grpHardware
             // 
@@ -408,7 +603,7 @@ namespace Overcapped_Optimizer
             grpHardware.Name = "grpHardware";
             grpHardware.Padding = new Padding(14, 44, 14, 14);
             grpHardware.Size = new Size(673, 198);
-            grpHardware.SubTitle = "Detected system specs";
+            grpHardware.SubTitle = "Detected system specs & health diagnostics";
             grpHardware.TabIndex = 1;
             grpHardware.Title = "Hardware Information";
             // 
@@ -454,7 +649,7 @@ namespace Overcapped_Optimizer
             lblHealthStatus.Prefix = "HEALTH:";
             lblHealthStatus.Size = new Size(559, 32);
             lblHealthStatus.TabIndex = 3;
-            lblHealthStatus.Text = "Scanning monitor Hz, RAM speed, power plan & drive...";
+            lblHealthStatus.Text = "Scanning monitor Hz, RAM, Page File, ReBAR, HAGS & drive...";
             // 
             // btnHealthDetails
             // 
@@ -478,13 +673,14 @@ namespace Overcapped_Optimizer
             grpQuickActions.Controls.Add(cardQuickFlush);
             grpQuickActions.Controls.Add(cardQuickShaderCache);
             grpQuickActions.Controls.Add(btnDashRestorePoint);
+            grpQuickActions.Controls.Add(btnDashRevertOptimizations);
             grpQuickActions.Controls.Add(btnDashTray);
             grpQuickActions.Font = new Font("Segoe UI", 9.5F);
             grpQuickActions.Location = new Point(16, 340);
             grpQuickActions.Name = "grpQuickActions";
             grpQuickActions.Padding = new Padding(14, 44, 14, 14);
             grpQuickActions.Size = new Size(673, 174);
-            grpQuickActions.SubTitle = "One-click maintenance utilities";
+            grpQuickActions.SubTitle = "One-click maintenance & safety utilities";
             grpQuickActions.TabIndex = 2;
             grpQuickActions.Title = "Quick Actions";
             // 
@@ -495,9 +691,9 @@ namespace Overcapped_Optimizer
             linkDonate.Icon = Properties.Resources.cup;
             linkDonate.Location = new Point(14, 124);
             linkDonate.Name = "linkDonate";
-            linkDonate.Size = new Size(250, 36);
-            linkDonate.TabIndex = 0;
-            linkDonate.Title = "Donate To Support Us";
+            linkDonate.Size = new Size(155, 36);
+            linkDonate.TabIndex = 2;
+            linkDonate.Title = "Donations";
             linkDonate.Url = "https://buymeacoffee.com/rustforgedev";
             // 
             // cardQuickFlush
@@ -509,7 +705,7 @@ namespace Overcapped_Optimizer
             cardQuickFlush.Selected = false;
             cardQuickFlush.Size = new Size(316, 68);
             cardQuickFlush.Subtitle = "Purge Windows standby memory list now";
-            cardQuickFlush.TabIndex = 1;
+            cardQuickFlush.TabIndex = 0;
             cardQuickFlush.Title = "Flush Standby RAM";
             cardQuickFlush.Click += flushRamToolStripMenuItem_Click;
             // 
@@ -522,7 +718,7 @@ namespace Overcapped_Optimizer
             cardQuickShaderCache.Selected = false;
             cardQuickShaderCache.Size = new Size(317, 68);
             cardQuickShaderCache.Subtitle = "Clear DirectX, NVIDIA & AMD shader caches";
-            cardQuickShaderCache.TabIndex = 2;
+            cardQuickShaderCache.TabIndex = 1;
             cardQuickShaderCache.Title = "Clear GPU Shader Cache";
             cardQuickShaderCache.Click += clearShaderCacheBtn_Click;
             // 
@@ -531,29 +727,44 @@ namespace Overcapped_Optimizer
             btnDashRestorePoint.AccentColor = Color.FromArgb(214, 28, 52);
             btnDashRestorePoint.BackColor = Color.Transparent;
             btnDashRestorePoint.CornerRadius = 5;
-            btnDashRestorePoint.Font = new Font("Segoe UI", 8.75F, FontStyle.Bold);
+            btnDashRestorePoint.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold);
             btnDashRestorePoint.ForeColor = Color.FromArgb(242, 242, 246);
             btnDashRestorePoint.IsPrimaryAction = false;
-            btnDashRestorePoint.Location = new Point(272, 124);
+            btnDashRestorePoint.Location = new Point(176, 124);
             btnDashRestorePoint.Name = "btnDashRestorePoint";
-            btnDashRestorePoint.Size = new Size(195, 36);
+            btnDashRestorePoint.Size = new Size(160, 36);
             btnDashRestorePoint.TabIndex = 3;
-            btnDashRestorePoint.Text = "Create System Restore Point";
+            btnDashRestorePoint.Text = "System Restore Point";
             btnDashRestorePoint.Click += btnDashRestorePoint_Click;
+            // 
+            // btnDashRevertOptimizations
+            // 
+            btnDashRevertOptimizations.AccentColor = Color.FromArgb(244, 63, 94);
+            btnDashRevertOptimizations.BackColor = Color.Transparent;
+            btnDashRevertOptimizations.CornerRadius = 5;
+            btnDashRevertOptimizations.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold);
+            btnDashRevertOptimizations.ForeColor = Color.FromArgb(242, 242, 246);
+            btnDashRevertOptimizations.IsPrimaryAction = false;
+            btnDashRevertOptimizations.Location = new Point(342, 124);
+            btnDashRevertOptimizations.Name = "btnDashRevertOptimizations";
+            btnDashRevertOptimizations.Size = new Size(172, 36);
+            btnDashRevertOptimizations.TabIndex = 4;
+            btnDashRevertOptimizations.Text = "Revert All Optimizations";
+            btnDashRevertOptimizations.Click += btnDashRevertOptimizations_Click;
             // 
             // btnDashTray
             // 
             btnDashTray.AccentColor = Color.FromArgb(214, 28, 52);
             btnDashTray.BackColor = Color.Transparent;
             btnDashTray.CornerRadius = 5;
-            btnDashTray.Font = new Font("Segoe UI", 8.75F, FontStyle.Bold);
+            btnDashTray.Font = new Font("Segoe UI", 8.25F, FontStyle.Bold);
             btnDashTray.ForeColor = Color.FromArgb(242, 242, 246);
             btnDashTray.IsPrimaryAction = false;
-            btnDashTray.Location = new Point(475, 124);
+            btnDashTray.Location = new Point(520, 124);
             btnDashTray.Name = "btnDashTray";
-            btnDashTray.Size = new Size(184, 36);
-            btnDashTray.TabIndex = 4;
-            btnDashTray.Text = "Minimize to System Tray";
+            btnDashTray.Size = new Size(139, 36);
+            btnDashTray.TabIndex = 5;
+            btnDashTray.Text = "Minimize to Tray";
             btnDashTray.Click += minimizeToTrayToolStripMenuItem_Click;
             // 
             // pnlHotkeys
@@ -996,18 +1207,27 @@ namespace Overcapped_Optimizer
             grpSystemOptimzations.Controls.Add(lblPCoresTitle);
             grpSystemOptimzations.Controls.Add(lblPCoresDesc);
             grpSystemOptimzations.Controls.Add(pCoresToggle);
-            grpSystemOptimzations.Controls.Add(sepTool1);
             grpSystemOptimzations.Controls.Add(lblPowerPlanTitle);
             grpSystemOptimzations.Controls.Add(lblPowerPlanDesc);
             grpSystemOptimzations.Controls.Add(autoPowerPlanToggle);
-            grpSystemOptimzations.Controls.Add(sepTool2);
+            grpSystemOptimzations.Controls.Add(sepTool1);
             grpSystemOptimzations.Controls.Add(lblGameModeTitle);
             grpSystemOptimzations.Controls.Add(lblGameModeDesc);
             grpSystemOptimzations.Controls.Add(gameModeDvrToggle);
-            grpSystemOptimzations.Controls.Add(sepTool3);
             grpSystemOptimzations.Controls.Add(lblFsoTitle);
             grpSystemOptimzations.Controls.Add(lblFsoDesc);
             grpSystemOptimzations.Controls.Add(disabledFSO);
+            grpSystemOptimzations.Controls.Add(sepTool2);
+            grpSystemOptimzations.Controls.Add(lblHagsTitle);
+            grpSystemOptimzations.Controls.Add(lblHagsDesc);
+            grpSystemOptimzations.Controls.Add(hagsToggle);
+            grpSystemOptimzations.Controls.Add(lblTelemetryTitle);
+            grpSystemOptimzations.Controls.Add(lblTelemetryDesc);
+            grpSystemOptimzations.Controls.Add(telemetryToggle);
+            grpSystemOptimzations.Controls.Add(sepTool3);
+            grpSystemOptimzations.Controls.Add(lblPauseSearchTitle);
+            grpSystemOptimzations.Controls.Add(lblPauseSearchDesc);
+            grpSystemOptimzations.Controls.Add(pauseSearchToggle);
             grpSystemOptimzations.Controls.Add(sepTool4);
             grpSystemOptimzations.Controls.Add(lblThrottleTitle);
             grpSystemOptimzations.Controls.Add(lblThrottleDesc);
@@ -1044,22 +1264,53 @@ namespace Overcapped_Optimizer
             // lblPCoresDesc
             // 
             lblPCoresDesc.AutoSize = true;
-            lblPCoresDesc.Font = new Font("Segoe UI", 8F);
+            lblPCoresDesc.Font = new Font("Segoe UI", 7.75F);
             lblPCoresDesc.ForeColor = Color.FromArgb(162, 162, 176);
             lblPCoresDesc.Location = new Point(16, 59);
             lblPCoresDesc.Name = "lblPCoresDesc";
-            lblPCoresDesc.Size = new Size(358, 13);
+            lblPCoresDesc.Size = new Size(203, 13);
             lblPCoresDesc.TabIndex = 1;
-            lblPCoresDesc.Text = "Pins CPU affinity to physical cores, avoiding SMT/hyperthread issues.";
+            lblPCoresDesc.Text = "Pin game to physical cores (avoid SMT)";
             // 
             // pCoresToggle
             // 
             pCoresToggle.BackColor = Color.Transparent;
             pCoresToggle.Checked = false;
-            pCoresToggle.Location = new Point(610, 48);
+            pCoresToggle.Location = new Point(276, 48);
             pCoresToggle.Name = "pCoresToggle";
             pCoresToggle.Size = new Size(46, 22);
             pCoresToggle.TabIndex = 2;
+            // 
+            // lblPowerPlanTitle
+            // 
+            lblPowerPlanTitle.AutoSize = true;
+            lblPowerPlanTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblPowerPlanTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblPowerPlanTitle.Location = new Point(344, 42);
+            lblPowerPlanTitle.Name = "lblPowerPlanTitle";
+            lblPowerPlanTitle.Size = new Size(162, 15);
+            lblPowerPlanTitle.TabIndex = 3;
+            lblPowerPlanTitle.Text = "Auto High / Ultimate Power";
+            // 
+            // lblPowerPlanDesc
+            // 
+            lblPowerPlanDesc.AutoSize = true;
+            lblPowerPlanDesc.Font = new Font("Segoe UI", 7.75F);
+            lblPowerPlanDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblPowerPlanDesc.Location = new Point(344, 59);
+            lblPowerPlanDesc.Name = "lblPowerPlanDesc";
+            lblPowerPlanDesc.Size = new Size(215, 13);
+            lblPowerPlanDesc.TabIndex = 4;
+            lblPowerPlanDesc.Text = "Gaming power plan, auto-reverts on exit";
+            // 
+            // autoPowerPlanToggle
+            // 
+            autoPowerPlanToggle.BackColor = Color.Transparent;
+            autoPowerPlanToggle.Checked = false;
+            autoPowerPlanToggle.Location = new Point(610, 48);
+            autoPowerPlanToggle.Name = "autoPowerPlanToggle";
+            autoPowerPlanToggle.Size = new Size(46, 22);
+            autoPowerPlanToggle.TabIndex = 5;
             // 
             // sepTool1
             // 
@@ -1067,38 +1318,71 @@ namespace Overcapped_Optimizer
             sepTool1.Location = new Point(16, 82);
             sepTool1.Name = "sepTool1";
             sepTool1.Size = new Size(641, 6);
-            sepTool1.TabIndex = 3;
+            sepTool1.TabIndex = 6;
             // 
-            // lblPowerPlanTitle
+            // lblGameModeTitle
             // 
-            lblPowerPlanTitle.AutoSize = true;
-            lblPowerPlanTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblPowerPlanTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblPowerPlanTitle.Location = new Point(16, 92);
-            lblPowerPlanTitle.Name = "lblPowerPlanTitle";
-            lblPowerPlanTitle.Size = new Size(188, 15);
-            lblPowerPlanTitle.TabIndex = 4;
-            lblPowerPlanTitle.Text = "Auto High / Ultimate Power Plan";
+            lblGameModeTitle.AutoSize = true;
+            lblGameModeTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblGameModeTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblGameModeTitle.Location = new Point(16, 92);
+            lblGameModeTitle.Name = "lblGameModeTitle";
+            lblGameModeTitle.Size = new Size(159, 15);
+            lblGameModeTitle.TabIndex = 7;
+            lblGameModeTitle.Text = "Game Mode ON & DVR Off";
+            lblGameModeTitle.UseMnemonic = false;
             // 
-            // lblPowerPlanDesc
+            // lblGameModeDesc
             // 
-            lblPowerPlanDesc.AutoSize = true;
-            lblPowerPlanDesc.Font = new Font("Segoe UI", 8F);
-            lblPowerPlanDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblPowerPlanDesc.Location = new Point(16, 109);
-            lblPowerPlanDesc.Name = "lblPowerPlanDesc";
-            lblPowerPlanDesc.Size = new Size(482, 13);
-            lblPowerPlanDesc.TabIndex = 5;
-            lblPowerPlanDesc.Text = "Switches to Ultimate/High Performance while any monitored game runs and restores on exit.";
+            lblGameModeDesc.AutoSize = true;
+            lblGameModeDesc.Font = new Font("Segoe UI", 7.75F);
+            lblGameModeDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblGameModeDesc.Location = new Point(16, 109);
+            lblGameModeDesc.Name = "lblGameModeDesc";
+            lblGameModeDesc.Size = new Size(236, 13);
+            lblGameModeDesc.TabIndex = 8;
+            lblGameModeDesc.Text = "Enables Game Mode & disables DVR capture";
+            lblGameModeDesc.UseMnemonic = false;
             // 
-            // autoPowerPlanToggle
+            // gameModeDvrToggle
             // 
-            autoPowerPlanToggle.BackColor = Color.Transparent;
-            autoPowerPlanToggle.Checked = false;
-            autoPowerPlanToggle.Location = new Point(610, 98);
-            autoPowerPlanToggle.Name = "autoPowerPlanToggle";
-            autoPowerPlanToggle.Size = new Size(46, 22);
-            autoPowerPlanToggle.TabIndex = 6;
+            gameModeDvrToggle.BackColor = Color.Transparent;
+            gameModeDvrToggle.Checked = false;
+            gameModeDvrToggle.Location = new Point(276, 98);
+            gameModeDvrToggle.Name = "gameModeDvrToggle";
+            gameModeDvrToggle.Size = new Size(46, 22);
+            gameModeDvrToggle.TabIndex = 9;
+            // 
+            // lblFsoTitle
+            // 
+            lblFsoTitle.AutoSize = true;
+            lblFsoTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblFsoTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblFsoTitle.Location = new Point(344, 92);
+            lblFsoTitle.Name = "lblFsoTitle";
+            lblFsoTitle.Size = new Size(163, 15);
+            lblFsoTitle.TabIndex = 10;
+            lblFsoTitle.Text = "Disable Fullscreen Opt (FSO)";
+            // 
+            // lblFsoDesc
+            // 
+            lblFsoDesc.AutoSize = true;
+            lblFsoDesc.Font = new Font("Segoe UI", 7.75F);
+            lblFsoDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblFsoDesc.Location = new Point(344, 109);
+            lblFsoDesc.Name = "lblFsoDesc";
+            lblFsoDesc.Size = new Size(225, 13);
+            lblFsoDesc.TabIndex = 11;
+            lblFsoDesc.Text = "Prevents DWM fullscreen latency overhead";
+            // 
+            // disabledFSO
+            // 
+            disabledFSO.BackColor = Color.Transparent;
+            disabledFSO.Checked = false;
+            disabledFSO.Location = new Point(610, 98);
+            disabledFSO.Name = "disabledFSO";
+            disabledFSO.Size = new Size(46, 22);
+            disabledFSO.TabIndex = 12;
             // 
             // sepTool2
             // 
@@ -1106,39 +1390,69 @@ namespace Overcapped_Optimizer
             sepTool2.Location = new Point(16, 132);
             sepTool2.Name = "sepTool2";
             sepTool2.Size = new Size(641, 6);
-            sepTool2.TabIndex = 7;
+            sepTool2.TabIndex = 13;
             // 
-            // lblGameModeTitle
+            // lblHagsTitle
             // 
-            lblGameModeTitle.AutoSize = true;
-            lblGameModeTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblGameModeTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblGameModeTitle.Location = new Point(16, 142);
-            lblGameModeTitle.Name = "lblGameModeTitle";
-            lblGameModeTitle.Size = new Size(216, 15);
-            lblGameModeTitle.TabIndex = 8;
-            lblGameModeTitle.Text = "Game Mode ON & Disable Game DVR";
-            lblGameModeTitle.UseMnemonic = false;
+            lblHagsTitle.AutoSize = true;
+            lblHagsTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblHagsTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblHagsTitle.Location = new Point(16, 142);
+            lblHagsTitle.Name = "lblHagsTitle";
+            lblHagsTitle.Size = new Size(184, 15);
+            lblHagsTitle.TabIndex = 14;
+            lblHagsTitle.Text = "HAGS GPU Scheduling (Reboot)";
             // 
-            // lblGameModeDesc
+            // lblHagsDesc
             // 
-            lblGameModeDesc.AutoSize = true;
-            lblGameModeDesc.Font = new Font("Segoe UI", 8F);
-            lblGameModeDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblGameModeDesc.Location = new Point(16, 159);
-            lblGameModeDesc.Name = "lblGameModeDesc";
-            lblGameModeDesc.Size = new Size(534, 13);
-            lblGameModeDesc.TabIndex = 9;
-            lblGameModeDesc.Text = "Enables Windows Game Mode (important for Ryzen X3D) and disables background Game DVR capture.";
+            lblHagsDesc.AutoSize = true;
+            lblHagsDesc.Font = new Font("Segoe UI", 7.75F);
+            lblHagsDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblHagsDesc.Location = new Point(16, 159);
+            lblHagsDesc.Name = "lblHagsDesc";
+            lblHagsDesc.Size = new Size(217, 13);
+            lblHagsDesc.TabIndex = 15;
+            lblHagsDesc.Text = "Hardware GPU scheduling policy (Admin)";
             // 
-            // gameModeDvrToggle
+            // hagsToggle
             // 
-            gameModeDvrToggle.BackColor = Color.Transparent;
-            gameModeDvrToggle.Checked = false;
-            gameModeDvrToggle.Location = new Point(610, 148);
-            gameModeDvrToggle.Name = "gameModeDvrToggle";
-            gameModeDvrToggle.Size = new Size(46, 22);
-            gameModeDvrToggle.TabIndex = 10;
+            hagsToggle.BackColor = Color.Transparent;
+            hagsToggle.Checked = false;
+            hagsToggle.Location = new Point(276, 148);
+            hagsToggle.Name = "hagsToggle";
+            hagsToggle.Size = new Size(46, 22);
+            hagsToggle.TabIndex = 16;
+            // 
+            // lblTelemetryTitle
+            // 
+            lblTelemetryTitle.AutoSize = true;
+            lblTelemetryTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblTelemetryTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblTelemetryTitle.Location = new Point(344, 142);
+            lblTelemetryTitle.Name = "lblTelemetryTitle";
+            lblTelemetryTitle.Size = new Size(181, 15);
+            lblTelemetryTitle.TabIndex = 17;
+            lblTelemetryTitle.Text = "Reduce Win Telemetry (Admin)";
+            // 
+            // lblTelemetryDesc
+            // 
+            lblTelemetryDesc.AutoSize = true;
+            lblTelemetryDesc.Font = new Font("Segoe UI", 7.75F);
+            lblTelemetryDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblTelemetryDesc.Location = new Point(344, 159);
+            lblTelemetryDesc.Name = "lblTelemetryDesc";
+            lblTelemetryDesc.Size = new Size(216, 13);
+            lblTelemetryDesc.TabIndex = 18;
+            lblTelemetryDesc.Text = "Reversible AllowTelemetry policy override";
+            // 
+            // telemetryToggle
+            // 
+            telemetryToggle.BackColor = Color.Transparent;
+            telemetryToggle.Checked = false;
+            telemetryToggle.Location = new Point(610, 148);
+            telemetryToggle.Name = "telemetryToggle";
+            telemetryToggle.Size = new Size(46, 22);
+            telemetryToggle.TabIndex = 19;
             // 
             // sepTool3
             // 
@@ -1146,38 +1460,38 @@ namespace Overcapped_Optimizer
             sepTool3.Location = new Point(16, 182);
             sepTool3.Name = "sepTool3";
             sepTool3.Size = new Size(641, 6);
-            sepTool3.TabIndex = 11;
+            sepTool3.TabIndex = 20;
             // 
-            // lblFsoTitle
+            // lblPauseSearchTitle
             // 
-            lblFsoTitle.AutoSize = true;
-            lblFsoTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            lblFsoTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblFsoTitle.Location = new Point(16, 192);
-            lblFsoTitle.Name = "lblFsoTitle";
-            lblFsoTitle.Size = new Size(219, 15);
-            lblFsoTitle.TabIndex = 12;
-            lblFsoTitle.Text = "Disable Fullscreen Optimizations (FSO)";
+            lblPauseSearchTitle.AutoSize = true;
+            lblPauseSearchTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblPauseSearchTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblPauseSearchTitle.Location = new Point(16, 192);
+            lblPauseSearchTitle.Name = "lblPauseSearchTitle";
+            lblPauseSearchTitle.Size = new Size(314, 15);
+            lblPauseSearchTitle.TabIndex = 21;
+            lblPauseSearchTitle.Text = "Pause Windows Search Indexing While Gaming (Admin)";
             // 
-            // lblFsoDesc
+            // lblPauseSearchDesc
             // 
-            lblFsoDesc.AutoSize = true;
-            lblFsoDesc.Font = new Font("Segoe UI", 8F);
-            lblFsoDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblFsoDesc.Location = new Point(16, 209);
-            lblFsoDesc.Name = "lblFsoDesc";
-            lblFsoDesc.Size = new Size(349, 13);
-            lblFsoDesc.TabIndex = 13;
-            lblFsoDesc.Text = "Applies Windows FSO override to prevent DWM fullscreen latency.";
+            lblPauseSearchDesc.AutoSize = true;
+            lblPauseSearchDesc.Font = new Font("Segoe UI", 8F);
+            lblPauseSearchDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblPauseSearchDesc.Location = new Point(16, 209);
+            lblPauseSearchDesc.Name = "lblPauseSearchDesc";
+            lblPauseSearchDesc.Size = new Size(440, 13);
+            lblPauseSearchDesc.TabIndex = 22;
+            lblPauseSearchDesc.Text = "Temporarily pauses WSearch disk indexing while a game runs and resumes it on exit.";
             // 
-            // disabledFSO
+            // pauseSearchToggle
             // 
-            disabledFSO.BackColor = Color.Transparent;
-            disabledFSO.Checked = false;
-            disabledFSO.Location = new Point(610, 198);
-            disabledFSO.Name = "disabledFSO";
-            disabledFSO.Size = new Size(46, 22);
-            disabledFSO.TabIndex = 14;
+            pauseSearchToggle.BackColor = Color.Transparent;
+            pauseSearchToggle.Checked = false;
+            pauseSearchToggle.Location = new Point(610, 198);
+            pauseSearchToggle.Name = "pauseSearchToggle";
+            pauseSearchToggle.Size = new Size(46, 22);
+            pauseSearchToggle.TabIndex = 23;
             // 
             // sepTool4
             // 
@@ -1185,7 +1499,7 @@ namespace Overcapped_Optimizer
             sepTool4.Location = new Point(16, 232);
             sepTool4.Name = "sepTool4";
             sepTool4.Size = new Size(641, 6);
-            sepTool4.TabIndex = 15;
+            sepTool4.TabIndex = 24;
             // 
             // lblThrottleTitle
             // 
@@ -1195,7 +1509,7 @@ namespace Overcapped_Optimizer
             lblThrottleTitle.Location = new Point(16, 242);
             lblThrottleTitle.Name = "lblThrottleTitle";
             lblThrottleTitle.Size = new Size(153, 15);
-            lblThrottleTitle.TabIndex = 16;
+            lblThrottleTitle.TabIndex = 25;
             lblThrottleTitle.Text = "Throttle Background Apps";
             // 
             // lblThrottleDesc
@@ -1206,7 +1520,7 @@ namespace Overcapped_Optimizer
             lblThrottleDesc.Location = new Point(16, 259);
             lblThrottleDesc.Name = "lblThrottleDesc";
             lblThrottleDesc.Size = new Size(482, 13);
-            lblThrottleDesc.TabIndex = 17;
+            lblThrottleDesc.TabIndex = 26;
             lblThrottleDesc.Text = "Lowers browsers and launchers to Below Normal priority while gaming, and restores on exit.";
             // 
             // btnEditThrottleList
@@ -1220,7 +1534,7 @@ namespace Overcapped_Optimizer
             btnEditThrottleList.Location = new Point(526, 244);
             btnEditThrottleList.Name = "btnEditThrottleList";
             btnEditThrottleList.Size = new Size(76, 30);
-            btnEditThrottleList.TabIndex = 18;
+            btnEditThrottleList.TabIndex = 27;
             btnEditThrottleList.Text = "Edit List";
             btnEditThrottleList.Click += btnEditThrottleList_Click;
             // 
@@ -1231,7 +1545,7 @@ namespace Overcapped_Optimizer
             throttleAppsToggle.Location = new Point(610, 248);
             throttleAppsToggle.Name = "throttleAppsToggle";
             throttleAppsToggle.Size = new Size(46, 22);
-            throttleAppsToggle.TabIndex = 19;
+            throttleAppsToggle.TabIndex = 28;
             // 
             // sepTool5
             // 
@@ -1239,7 +1553,7 @@ namespace Overcapped_Optimizer
             sepTool5.Location = new Point(16, 282);
             sepTool5.Name = "sepTool5";
             sepTool5.Size = new Size(641, 6);
-            sepTool5.TabIndex = 20;
+            sepTool5.TabIndex = 29;
             // 
             // lblFpsOverlayTitle
             // 
@@ -1249,7 +1563,7 @@ namespace Overcapped_Optimizer
             lblFpsOverlayTitle.Location = new Point(16, 294);
             lblFpsOverlayTitle.Name = "lblFpsOverlayTitle";
             lblFpsOverlayTitle.Size = new Size(172, 15);
-            lblFpsOverlayTitle.TabIndex = 21;
+            lblFpsOverlayTitle.TabIndex = 30;
             lblFpsOverlayTitle.Text = "In-Game FPS Overlay (Admin)";
             // 
             // lblFpsOverlayDesc
@@ -1260,7 +1574,7 @@ namespace Overcapped_Optimizer
             lblFpsOverlayDesc.Location = new Point(16, 311);
             lblFpsOverlayDesc.Name = "lblFpsOverlayDesc";
             lblFpsOverlayDesc.Size = new Size(146, 13);
-            lblFpsOverlayDesc.TabIndex = 22;
+            lblFpsOverlayDesc.TabIndex = 31;
             lblFpsOverlayDesc.Text = "Zero-injection FPS counter.";
             // 
             // btnToggle1PercentLow
@@ -1274,7 +1588,7 @@ namespace Overcapped_Optimizer
             btnToggle1PercentLow.Location = new Point(226, 296);
             btnToggle1PercentLow.Name = "btnToggle1PercentLow";
             btnToggle1PercentLow.Size = new Size(92, 30);
-            btnToggle1PercentLow.TabIndex = 23;
+            btnToggle1PercentLow.TabIndex = 32;
             btnToggle1PercentLow.Text = "1% Low: ON";
             btnToggle1PercentLow.Click += btnToggle1PercentLow_Click;
             // 
@@ -1290,7 +1604,7 @@ namespace Overcapped_Optimizer
             fpsPositionDropdown.Location = new Point(324, 296);
             fpsPositionDropdown.Name = "fpsPositionDropdown";
             fpsPositionDropdown.Size = new Size(118, 30);
-            fpsPositionDropdown.TabIndex = 24;
+            fpsPositionDropdown.TabIndex = 33;
             fpsPositionDropdown.SelectedIndexChanged += fpsPositionDropdown_SelectedIndexChanged;
             // 
             // btnMoveFpsOverlay
@@ -1304,7 +1618,7 @@ namespace Overcapped_Optimizer
             btnMoveFpsOverlay.Location = new Point(528, 296);
             btnMoveFpsOverlay.Name = "btnMoveFpsOverlay";
             btnMoveFpsOverlay.Size = new Size(74, 30);
-            btnMoveFpsOverlay.TabIndex = 26;
+            btnMoveFpsOverlay.TabIndex = 35;
             btnMoveFpsOverlay.Text = "Move";
             btnMoveFpsOverlay.Click += btnMoveFpsOverlay_Click;
             // 
@@ -1315,7 +1629,7 @@ namespace Overcapped_Optimizer
             fpsOverlayToggle.Location = new Point(610, 300);
             fpsOverlayToggle.Name = "fpsOverlayToggle";
             fpsOverlayToggle.Size = new Size(46, 22);
-            fpsOverlayToggle.TabIndex = 27;
+            fpsOverlayToggle.TabIndex = 36;
             fpsOverlayToggle.CheckedChanged += fpsOverlayToggle_CheckedChanged;
             // 
             // fpsOpacityDropdown
@@ -1330,7 +1644,7 @@ namespace Overcapped_Optimizer
             fpsOpacityDropdown.Location = new Point(448, 296);
             fpsOpacityDropdown.Name = "fpsOpacityDropdown";
             fpsOpacityDropdown.Size = new Size(74, 30);
-            fpsOpacityDropdown.TabIndex = 25;
+            fpsOpacityDropdown.TabIndex = 34;
             fpsOpacityDropdown.SelectedIndexChanged += fpsOpacityDropdown_SelectedIndexChanged;
             // 
             // grpCacheCleaners
@@ -1810,183 +2124,6 @@ namespace Overcapped_Optimizer
             btnPackBuilder.Text = "Open Game Pack Builder...";
             btnPackBuilder.Click += btnPackBuilder_Click;
             // 
-            // pnlAbout
-            // 
-            pnlAbout.BackColor = Color.FromArgb(9, 9, 12);
-            pnlAbout.Controls.Add(grpLinks);
-            pnlAbout.Controls.Add(grpDiagnostics);
-            pnlAbout.Dock = DockStyle.Fill;
-            pnlAbout.Location = new Point(0, 0);
-            pnlAbout.Name = "pnlAbout";
-            pnlAbout.Size = new Size(705, 525);
-            pnlAbout.TabIndex = 5;
-            pnlAbout.Visible = false;
-            // 
-            // grpLinks
-            // 
-            grpLinks.BackColor = Color.Transparent;
-            grpLinks.Controls.Add(cardPanel);
-            grpLinks.Controls.Add(linkWebsite);
-            grpLinks.Controls.Add(aboutLinkTile1);
-            grpLinks.Controls.Add(linkDocs);
-            grpLinks.Controls.Add(linkDiscord);
-            grpLinks.Controls.Add(linkGitHub);
-            grpLinks.Font = new Font("Segoe UI", 9.5F);
-            grpLinks.Location = new Point(16, 14);
-            grpLinks.Name = "grpLinks";
-            grpLinks.Padding = new Padding(14, 44, 14, 14);
-            grpLinks.Size = new Size(673, 380);
-            grpLinks.SubTitle = "About Overcapped Optimizer";
-            grpLinks.TabIndex = 0;
-            grpLinks.Title = "About";
-            // 
-            // cardPanel
-            // 
-            cardPanel.BackColor = Color.FromArgb(22, 22, 29);
-            cardPanel.Controls.Add(roLabel2);
-            cardPanel.Controls.Add(lblDescription);
-            cardPanel.Location = new Point(20, 41);
-            cardPanel.Name = "cardPanel";
-            cardPanel.Padding = new Padding(16);
-            cardPanel.Size = new Size(636, 112);
-            cardPanel.TabIndex = 0;
-            // 
-            // roLabel2
-            // 
-            roLabel2.BackColor = Color.Transparent;
-            roLabel2.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
-            roLabel2.Location = new Point(18, 5);
-            roLabel2.Name = "roLabel2";
-            roLabel2.Size = new Size(200, 24);
-            roLabel2.TabIndex = 0;
-            roLabel2.Value1 = "Overcapped";
-            roLabel2.Value2 = " Optimizer";
-            // 
-            // lblDescription
-            // 
-            lblDescription.Font = new Font("Segoe UI", 9F);
-            lblDescription.ForeColor = Color.FromArgb(162, 162, 176);
-            lblDescription.Location = new Point(18, 31);
-            lblDescription.Name = "lblDescription";
-            lblDescription.Size = new Size(601, 76);
-            lblDescription.TabIndex = 1;
-            lblDescription.Text = resources.GetString("lblDescription.Text");
-            // 
-            // linkWebsite
-            // 
-            linkWebsite.BackColor = Color.Transparent;
-            linkWebsite.Icon = Properties.Resources.docs;
-            linkWebsite.Location = new Point(20, 233);
-            linkWebsite.Name = "linkWebsite";
-            linkWebsite.Size = new Size(315, 62);
-            linkWebsite.TabIndex = 1;
-            linkWebsite.Title = "Overcapped Documentation";
-            linkWebsite.Url = "https://overcapped.us/docs";
-            // 
-            // aboutLinkTile1
-            // 
-            aboutLinkTile1.BackColor = Color.Transparent;
-            aboutLinkTile1.Icon = Properties.Resources.cup;
-            aboutLinkTile1.Location = new Point(342, 301);
-            aboutLinkTile1.Name = "aboutLinkTile1";
-            aboutLinkTile1.Size = new Size(315, 62);
-            aboutLinkTile1.TabIndex = 2;
-            aboutLinkTile1.Title = "Donations";
-            aboutLinkTile1.Url = "https://buymeacoffee.com/rustforgedev";
-            // 
-            // linkDocs
-            // 
-            linkDocs.BackColor = Color.Transparent;
-            linkDocs.Icon = Properties.Resources.OptimizerLogo;
-            linkDocs.Location = new Point(20, 159);
-            linkDocs.Name = "linkDocs";
-            linkDocs.Size = new Size(636, 62);
-            linkDocs.TabIndex = 3;
-            linkDocs.Title = "Overcapped Optimizer Site";
-            linkDocs.Url = "https://overcapped.us/";
-            // 
-            // linkDiscord
-            // 
-            linkDiscord.BackColor = Color.Transparent;
-            linkDiscord.Icon = Properties.Resources.discord;
-            linkDiscord.Location = new Point(20, 301);
-            linkDiscord.Name = "linkDiscord";
-            linkDiscord.Size = new Size(315, 62);
-            linkDiscord.TabIndex = 4;
-            linkDiscord.Title = "Discord Support";
-            linkDiscord.Url = "https://overcapped.us/invite";
-            // 
-            // linkGitHub
-            // 
-            linkGitHub.BackColor = Color.Transparent;
-            linkGitHub.Icon = Properties.Resources.github;
-            linkGitHub.Location = new Point(342, 233);
-            linkGitHub.Name = "linkGitHub";
-            linkGitHub.Size = new Size(315, 62);
-            linkGitHub.TabIndex = 5;
-            linkGitHub.Title = "GitHub Source";
-            linkGitHub.Url = "https://github.com/V0idpool/Overcapped-PC-Gaming-Optimizer";
-            // 
-            // grpDiagnostics
-            // 
-            grpDiagnostics.BackColor = Color.Transparent;
-            grpDiagnostics.Controls.Add(btnOpenLog);
-            grpDiagnostics.Controls.Add(btnOpenLogDir);
-            grpDiagnostics.Controls.Add(btnOpenSettingsDir);
-            grpDiagnostics.Font = new Font("Segoe UI", 9.5F);
-            grpDiagnostics.Location = new Point(16, 400);
-            grpDiagnostics.Name = "grpDiagnostics";
-            grpDiagnostics.Padding = new Padding(14, 44, 14, 14);
-            grpDiagnostics.Size = new Size(673, 114);
-            grpDiagnostics.SubTitle = "Quick access to logs, settings.json & JSON packs";
-            grpDiagnostics.TabIndex = 1;
-            grpDiagnostics.Title = "Diagnostics & Config Files";
-            // 
-            // btnOpenLog
-            // 
-            btnOpenLog.AccentColor = Color.FromArgb(214, 28, 52);
-            btnOpenLog.BackColor = Color.Transparent;
-            btnOpenLog.CornerRadius = 5;
-            btnOpenLog.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnOpenLog.ForeColor = Color.FromArgb(242, 242, 246);
-            btnOpenLog.IsPrimaryAction = false;
-            btnOpenLog.Location = new Point(14, 54);
-            btnOpenLog.Name = "btnOpenLog";
-            btnOpenLog.Size = new Size(206, 38);
-            btnOpenLog.TabIndex = 0;
-            btnOpenLog.Text = "Open Log File";
-            btnOpenLog.Click += openLogFileToolStripMenuItem_Click;
-            // 
-            // btnOpenLogDir
-            // 
-            btnOpenLogDir.AccentColor = Color.FromArgb(214, 28, 52);
-            btnOpenLogDir.BackColor = Color.Transparent;
-            btnOpenLogDir.CornerRadius = 5;
-            btnOpenLogDir.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnOpenLogDir.ForeColor = Color.FromArgb(242, 242, 246);
-            btnOpenLogDir.IsPrimaryAction = false;
-            btnOpenLogDir.Location = new Point(232, 54);
-            btnOpenLogDir.Name = "btnOpenLogDir";
-            btnOpenLogDir.Size = new Size(206, 38);
-            btnOpenLogDir.TabIndex = 1;
-            btnOpenLogDir.Text = "Open Logs Folder";
-            btnOpenLogDir.Click += openLogFilePathToolStripMenuItem_Click;
-            // 
-            // btnOpenSettingsDir
-            // 
-            btnOpenSettingsDir.AccentColor = Color.FromArgb(214, 28, 52);
-            btnOpenSettingsDir.BackColor = Color.Transparent;
-            btnOpenSettingsDir.CornerRadius = 5;
-            btnOpenSettingsDir.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnOpenSettingsDir.ForeColor = Color.FromArgb(242, 242, 246);
-            btnOpenSettingsDir.IsPrimaryAction = false;
-            btnOpenSettingsDir.Location = new Point(450, 54);
-            btnOpenSettingsDir.Name = "btnOpenSettingsDir";
-            btnOpenSettingsDir.Size = new Size(209, 38);
-            btnOpenSettingsDir.TabIndex = 2;
-            btnOpenSettingsDir.Text = "Open Data Folder";
-            btnOpenSettingsDir.Click += openSettingsFilePathToolStripMenuItem_Click;
-            // 
             // pnlNetwork
             // 
             pnlNetwork.BackColor = Color.FromArgb(9, 9, 12);
@@ -2008,10 +2145,17 @@ namespace Overcapped_Optimizer
             grpNetworkOptimzations.Controls.Add(lblNicPowerDesc);
             grpNetworkOptimzations.Controls.Add(disableNicPowerToggle);
             grpNetworkOptimzations.Controls.Add(sepNet1);
+            grpNetworkOptimzations.Controls.Add(lblIntModTitle);
+            grpNetworkOptimzations.Controls.Add(lblIntModDesc);
+            grpNetworkOptimzations.Controls.Add(disableIntModToggle);
+            grpNetworkOptimzations.Controls.Add(lblRssTitle);
+            grpNetworkOptimzations.Controls.Add(lblRssDesc);
+            grpNetworkOptimzations.Controls.Add(enableRssToggle);
+            grpNetworkOptimzations.Controls.Add(sepNet2);
             grpNetworkOptimzations.Controls.Add(lblQosTitle);
             grpNetworkOptimzations.Controls.Add(lblQosDesc);
             grpNetworkOptimzations.Controls.Add(qosDscpToggle);
-            grpNetworkOptimzations.Controls.Add(sepNet2);
+            grpNetworkOptimzations.Controls.Add(sepNet3);
             grpNetworkOptimzations.Controls.Add(lblDeliveryOptTitle);
             grpNetworkOptimzations.Controls.Add(lblDeliveryOptDesc);
             grpNetworkOptimzations.Controls.Add(deliveryOptToggle);
@@ -2019,7 +2163,7 @@ namespace Overcapped_Optimizer
             grpNetworkOptimzations.Location = new Point(16, 12);
             grpNetworkOptimzations.Name = "grpNetworkOptimzations";
             grpNetworkOptimzations.Padding = new Padding(14, 44, 14, 14);
-            grpNetworkOptimzations.Size = new Size(673, 206);
+            grpNetworkOptimzations.Size = new Size(673, 244);
             grpNetworkOptimzations.SubTitle = "Requires Administrator privileges";
             grpNetworkOptimzations.TabIndex = 0;
             grpNetworkOptimzations.Title = "Network Optimizations";
@@ -2027,20 +2171,20 @@ namespace Overcapped_Optimizer
             // lblNicPowerTitle
             // 
             lblNicPowerTitle.AutoSize = true;
-            lblNicPowerTitle.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            lblNicPowerTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblNicPowerTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblNicPowerTitle.Location = new Point(16, 44);
+            lblNicPowerTitle.Location = new Point(16, 40);
             lblNicPowerTitle.Name = "lblNicPowerTitle";
-            lblNicPowerTitle.Size = new Size(370, 17);
+            lblNicPowerTitle.Size = new Size(331, 15);
             lblNicPowerTitle.TabIndex = 0;
             lblNicPowerTitle.Text = "Disable NIC Power Saving / Energy-Efficient Ethernet (EEE)";
             // 
             // lblNicPowerDesc
             // 
             lblNicPowerDesc.AutoSize = true;
-            lblNicPowerDesc.Font = new Font("Segoe UI", 8.25F);
+            lblNicPowerDesc.Font = new Font("Segoe UI", 8F);
             lblNicPowerDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblNicPowerDesc.Location = new Point(16, 63);
+            lblNicPowerDesc.Location = new Point(16, 57);
             lblNicPowerDesc.Name = "lblNicPowerDesc";
             lblNicPowerDesc.Size = new Size(506, 13);
             lblNicPowerDesc.TabIndex = 1;
@@ -2050,7 +2194,7 @@ namespace Overcapped_Optimizer
             // 
             disableNicPowerToggle.BackColor = Color.Transparent;
             disableNicPowerToggle.Checked = false;
-            disableNicPowerToggle.Location = new Point(610, 50);
+            disableNicPowerToggle.Location = new Point(610, 46);
             disableNicPowerToggle.Name = "disableNicPowerToggle";
             disableNicPowerToggle.Size = new Size(46, 22);
             disableNicPowerToggle.TabIndex = 2;
@@ -2058,80 +2202,150 @@ namespace Overcapped_Optimizer
             // sepNet1
             // 
             sepNet1.BackColor = Color.Transparent;
-            sepNet1.Location = new Point(16, 88);
+            sepNet1.Location = new Point(16, 80);
             sepNet1.Name = "sepNet1";
             sepNet1.Size = new Size(641, 6);
             sepNet1.TabIndex = 3;
             // 
+            // lblIntModTitle
+            // 
+            lblIntModTitle.AutoSize = true;
+            lblIntModTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblIntModTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblIntModTitle.Location = new Point(16, 90);
+            lblIntModTitle.Name = "lblIntModTitle";
+            lblIntModTitle.Size = new Size(170, 15);
+            lblIntModTitle.TabIndex = 4;
+            lblIntModTitle.Text = "Disable Interrupt Moderation";
+            // 
+            // lblIntModDesc
+            // 
+            lblIntModDesc.AutoSize = true;
+            lblIntModDesc.Font = new Font("Segoe UI", 7.75F);
+            lblIntModDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblIntModDesc.Location = new Point(16, 107);
+            lblIntModDesc.Name = "lblIntModDesc";
+            lblIntModDesc.Size = new Size(176, 13);
+            lblIntModDesc.TabIndex = 5;
+            lblIntModDesc.Text = "Cuts NIC packet batching latency";
+            // 
+            // disableIntModToggle
+            // 
+            disableIntModToggle.BackColor = Color.Transparent;
+            disableIntModToggle.Checked = false;
+            disableIntModToggle.Location = new Point(276, 96);
+            disableIntModToggle.Name = "disableIntModToggle";
+            disableIntModToggle.Size = new Size(46, 22);
+            disableIntModToggle.TabIndex = 6;
+            // 
+            // lblRssTitle
+            // 
+            lblRssTitle.AutoSize = true;
+            lblRssTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblRssTitle.ForeColor = Color.FromArgb(242, 242, 246);
+            lblRssTitle.Location = new Point(344, 90);
+            lblRssTitle.Name = "lblRssTitle";
+            lblRssTitle.Size = new Size(154, 15);
+            lblRssTitle.TabIndex = 7;
+            lblRssTitle.Text = "Receive Side Scaling (RSS)";
+            // 
+            // lblRssDesc
+            // 
+            lblRssDesc.AutoSize = true;
+            lblRssDesc.Font = new Font("Segoe UI", 7.75F);
+            lblRssDesc.ForeColor = Color.FromArgb(162, 162, 176);
+            lblRssDesc.Location = new Point(344, 107);
+            lblRssDesc.Name = "lblRssDesc";
+            lblRssDesc.Size = new Size(184, 13);
+            lblRssDesc.TabIndex = 8;
+            lblRssDesc.Text = "Spreads NIC load across CPU cores";
+            // 
+            // enableRssToggle
+            // 
+            enableRssToggle.BackColor = Color.Transparent;
+            enableRssToggle.Checked = true;
+            enableRssToggle.Location = new Point(610, 96);
+            enableRssToggle.Name = "enableRssToggle";
+            enableRssToggle.Size = new Size(46, 22);
+            enableRssToggle.TabIndex = 9;
+            // 
+            // sepNet2
+            // 
+            sepNet2.BackColor = Color.Transparent;
+            sepNet2.Location = new Point(16, 130);
+            sepNet2.Name = "sepNet2";
+            sepNet2.Size = new Size(641, 6);
+            sepNet2.TabIndex = 10;
+            // 
             // lblQosTitle
             // 
             lblQosTitle.AutoSize = true;
-            lblQosTitle.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            lblQosTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblQosTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblQosTitle.Location = new Point(16, 100);
+            lblQosTitle.Location = new Point(16, 140);
             lblQosTitle.Name = "lblQosTitle";
-            lblQosTitle.Size = new Size(255, 17);
-            lblQosTitle.TabIndex = 4;
+            lblQosTitle.Size = new Size(230, 15);
+            lblQosTitle.TabIndex = 11;
             lblQosTitle.Text = "QoS Expedited Tagging for Active Game";
             // 
             // lblQosDesc
             // 
             lblQosDesc.AutoSize = true;
-            lblQosDesc.Font = new Font("Segoe UI", 8.25F);
+            lblQosDesc.Font = new Font("Segoe UI", 8F);
             lblQosDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblQosDesc.Location = new Point(16, 119);
+            lblQosDesc.Location = new Point(16, 157);
             lblQosDesc.Name = "lblQosDesc";
             lblQosDesc.Size = new Size(514, 13);
-            lblQosDesc.TabIndex = 5;
+            lblQosDesc.TabIndex = 12;
             lblQosDesc.Text = "Tags the selected game's UDP packets with DSCP 46 (Expedited Forwarding) for QoS-aware routers.";
             // 
             // qosDscpToggle
             // 
             qosDscpToggle.BackColor = Color.Transparent;
             qosDscpToggle.Checked = false;
-            qosDscpToggle.Location = new Point(610, 106);
+            qosDscpToggle.Location = new Point(610, 146);
             qosDscpToggle.Name = "qosDscpToggle";
             qosDscpToggle.Size = new Size(46, 22);
-            qosDscpToggle.TabIndex = 6;
+            qosDscpToggle.TabIndex = 13;
             // 
-            // sepNet2
+            // sepNet3
             // 
-            sepNet2.BackColor = Color.Transparent;
-            sepNet2.Location = new Point(16, 144);
-            sepNet2.Name = "sepNet2";
-            sepNet2.Size = new Size(641, 6);
-            sepNet2.TabIndex = 7;
+            sepNet3.BackColor = Color.Transparent;
+            sepNet3.Location = new Point(16, 180);
+            sepNet3.Name = "sepNet3";
+            sepNet3.Size = new Size(641, 6);
+            sepNet3.TabIndex = 14;
             // 
             // lblDeliveryOptTitle
             // 
             lblDeliveryOptTitle.AutoSize = true;
-            lblDeliveryOptTitle.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            lblDeliveryOptTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblDeliveryOptTitle.ForeColor = Color.FromArgb(242, 242, 246);
-            lblDeliveryOptTitle.Location = new Point(16, 156);
+            lblDeliveryOptTitle.Location = new Point(16, 190);
             lblDeliveryOptTitle.Name = "lblDeliveryOptTitle";
-            lblDeliveryOptTitle.Size = new Size(349, 17);
-            lblDeliveryOptTitle.TabIndex = 8;
+            lblDeliveryOptTitle.Size = new Size(311, 15);
+            lblDeliveryOptTitle.TabIndex = 15;
             lblDeliveryOptTitle.Text = "Delivery Optimization Kill-Switch (Disable Update P2P)";
             // 
             // lblDeliveryOptDesc
             // 
             lblDeliveryOptDesc.AutoSize = true;
-            lblDeliveryOptDesc.Font = new Font("Segoe UI", 8.25F);
+            lblDeliveryOptDesc.Font = new Font("Segoe UI", 8F);
             lblDeliveryOptDesc.ForeColor = Color.FromArgb(162, 162, 176);
-            lblDeliveryOptDesc.Location = new Point(16, 175);
+            lblDeliveryOptDesc.Location = new Point(16, 207);
             lblDeliveryOptDesc.Name = "lblDeliveryOptDesc";
             lblDeliveryOptDesc.Size = new Size(516, 13);
-            lblDeliveryOptDesc.TabIndex = 9;
+            lblDeliveryOptDesc.TabIndex = 16;
             lblDeliveryOptDesc.Text = "Disables Windows Update P2P uploads so Windows won't chew up upload bandwidth mid-match.";
             // 
             // deliveryOptToggle
             // 
             deliveryOptToggle.BackColor = Color.Transparent;
             deliveryOptToggle.Checked = false;
-            deliveryOptToggle.Location = new Point(610, 162);
+            deliveryOptToggle.Location = new Point(610, 196);
             deliveryOptToggle.Name = "deliveryOptToggle";
             deliveryOptToggle.Size = new Size(46, 22);
-            deliveryOptToggle.TabIndex = 10;
+            deliveryOptToggle.TabIndex = 17;
             // 
             // btnApplyNetworkOptimzations
             // 
@@ -2141,9 +2355,9 @@ namespace Overcapped_Optimizer
             btnApplyNetworkOptimzations.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnApplyNetworkOptimzations.ForeColor = Color.FromArgb(242, 242, 246);
             btnApplyNetworkOptimzations.IsPrimaryAction = true;
-            btnApplyNetworkOptimzations.Location = new Point(16, 226);
+            btnApplyNetworkOptimzations.Location = new Point(16, 262);
             btnApplyNetworkOptimzations.Name = "btnApplyNetworkOptimzations";
-            btnApplyNetworkOptimzations.Size = new Size(444, 36);
+            btnApplyNetworkOptimzations.Size = new Size(444, 34);
             btnApplyNetworkOptimzations.TabIndex = 1;
             btnApplyNetworkOptimzations.Text = "Apply Network Optimizations";
             btnApplyNetworkOptimzations.Click += btnApplyNetworkOptimzations_Click;
@@ -2156,9 +2370,9 @@ namespace Overcapped_Optimizer
             btnFlushDns.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnFlushDns.ForeColor = Color.FromArgb(242, 242, 246);
             btnFlushDns.IsPrimaryAction = false;
-            btnFlushDns.Location = new Point(472, 226);
+            btnFlushDns.Location = new Point(472, 262);
             btnFlushDns.Name = "btnFlushDns";
-            btnFlushDns.Size = new Size(217, 36);
+            btnFlushDns.Size = new Size(217, 34);
             btnFlushDns.TabIndex = 2;
             btnFlushDns.Text = "Flush DNS Cache";
             btnFlushDns.Click += btnFlushDns_Click;
@@ -2173,10 +2387,10 @@ namespace Overcapped_Optimizer
             grpPingMonitor.Controls.Add(lblPingJitter);
             grpPingMonitor.Controls.Add(lblPacketLoss);
             grpPingMonitor.Font = new Font("Segoe UI", 9.5F);
-            grpPingMonitor.Location = new Point(16, 270);
+            grpPingMonitor.Location = new Point(16, 304);
             grpPingMonitor.Name = "grpPingMonitor";
             grpPingMonitor.Padding = new Padding(14, 44, 14, 14);
-            grpPingMonitor.Size = new Size(673, 240);
+            grpPingMonitor.Size = new Size(673, 212);
             grpPingMonitor.SubTitle = "Enter server IP and port, or hostname and port and ping attempts";
             grpPingMonitor.TabIndex = 3;
             grpPingMonitor.Title = "Server Jitter & Packet Loss Monitor";
@@ -2184,7 +2398,7 @@ namespace Overcapped_Optimizer
             // txtServerIp
             // 
             txtServerIp.BackColor = Color.Transparent;
-            txtServerIp.Location = new Point(14, 48);
+            txtServerIp.Location = new Point(14, 44);
             txtServerIp.MaxLength = 256;
             txtServerIp.Multiline = false;
             txtServerIp.Name = "txtServerIp";
@@ -2199,11 +2413,11 @@ namespace Overcapped_Optimizer
             // 
             pingCountNumeric.BackColor = Color.Transparent;
             pingCountNumeric.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            pingCountNumeric.Location = new Point(430, 48);
+            pingCountNumeric.Location = new Point(430, 44);
             pingCountNumeric.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             pingCountNumeric.Minimum = new decimal(new int[] { 5, 0, 0, 0 });
             pingCountNumeric.Name = "pingCountNumeric";
-            pingCountNumeric.Size = new Size(96, 34);
+            pingCountNumeric.Size = new Size(96, 32);
             pingCountNumeric.TabIndex = 1;
             pingCountNumeric.Value = new decimal(new int[] { 15, 0, 0, 0 });
             // 
@@ -2215,9 +2429,9 @@ namespace Overcapped_Optimizer
             btnRunPingTest.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             btnRunPingTest.ForeColor = Color.FromArgb(242, 242, 246);
             btnRunPingTest.IsPrimaryAction = true;
-            btnRunPingTest.Location = new Point(536, 48);
+            btnRunPingTest.Location = new Point(536, 44);
             btnRunPingTest.Name = "btnRunPingTest";
-            btnRunPingTest.Size = new Size(123, 34);
+            btnRunPingTest.Size = new Size(123, 32);
             btnRunPingTest.TabIndex = 2;
             btnRunPingTest.Text = "Run Test";
             btnRunPingTest.Click += btnRunPingTest_Click;
@@ -2226,7 +2440,7 @@ namespace Overcapped_Optimizer
             // 
             lblPingAvg.BackColor = Color.Transparent;
             lblPingAvg.DotColor = Color.FromArgb(248, 54, 78);
-            lblPingAvg.Location = new Point(14, 96);
+            lblPingAvg.Location = new Point(14, 86);
             lblPingAvg.Name = "lblPingAvg";
             lblPingAvg.Prefix = "AVG PING:";
             lblPingAvg.Size = new Size(645, 32);
@@ -2237,7 +2451,7 @@ namespace Overcapped_Optimizer
             // 
             lblPingJitter.BackColor = Color.Transparent;
             lblPingJitter.DotColor = Color.FromArgb(214, 28, 52);
-            lblPingJitter.Location = new Point(14, 136);
+            lblPingJitter.Location = new Point(14, 126);
             lblPingJitter.Name = "lblPingJitter";
             lblPingJitter.Prefix = "JITTER:";
             lblPingJitter.Size = new Size(645, 32);
@@ -2248,7 +2462,7 @@ namespace Overcapped_Optimizer
             // 
             lblPacketLoss.BackColor = Color.Transparent;
             lblPacketLoss.DotColor = Color.FromArgb(16, 185, 129);
-            lblPacketLoss.Location = new Point(14, 176);
+            lblPacketLoss.Location = new Point(14, 166);
             lblPacketLoss.Name = "lblPacketLoss";
             lblPacketLoss.Prefix = "PACKET LOSS:";
             lblPacketLoss.Size = new Size(645, 32);
@@ -2638,7 +2852,7 @@ namespace Overcapped_Optimizer
             navDashboard.LinkedPanel = pnlDashboard;
             navDashboard.Location = new Point(9, 16);
             navDashboard.Name = "navDashboard";
-            navDashboard.Selected = false;
+            navDashboard.Selected = true;
             navDashboard.Size = new Size(194, 38);
             navDashboard.TabIndex = 4;
             navDashboard.Text = "Dashboard";
@@ -2708,9 +2922,9 @@ namespace Overcapped_Optimizer
             navAbout.LinkedPanel = pnlAbout;
             navAbout.Location = new Point(9, 280);
             navAbout.Name = "navAbout";
-            navAbout.Selected = true;
+            navAbout.Selected = false;
             navAbout.Size = new Size(194, 38);
-            navAbout.TabIndex = 9;
+            navAbout.TabIndex = 10;
             navAbout.Text = "Logs & About";
             navAbout.TextCharacter = "★";
             // 
@@ -2720,7 +2934,7 @@ namespace Overcapped_Optimizer
             sepSidebar.Location = new Point(12, 446);
             sepSidebar.Name = "sepSidebar";
             sepSidebar.Size = new Size(188, 8);
-            sepSidebar.TabIndex = 10;
+            sepSidebar.TabIndex = 11;
             // 
             // launchButton1
             // 
@@ -2731,7 +2945,7 @@ namespace Overcapped_Optimizer
             launchButton1.Name = "launchButton1";
             launchButton1.Size = new Size(188, 54);
             launchButton1.SubText = "SELECT A GAME";
-            launchButton1.TabIndex = 11;
+            launchButton1.TabIndex = 13;
             launchButton1.Text = "LAUNCH GAME";
             launchButton1.Click += launchButton1_Click;
             // 
@@ -2764,7 +2978,7 @@ namespace Overcapped_Optimizer
             // 
             // fileToolStripMenuItem
             // 
-            fileToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { scanGamesToolStripMenuItem, addGameToolStripMenuItem, openPacksToolStripMenuItem, packBuilderToolStripMenuItem, toolStripSeparator1, exitToolStripMenuItem1 });
+            fileToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { scanGamesToolStripMenuItem, addGameToolStripMenuItem, openPacksToolStripMenuItem, packBuilderToolStripMenuItem, revertAllOptimizationsToolStripMenuItem, toolStripSeparator1, exitToolStripMenuItem1 });
             fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             fileToolStripMenuItem.Size = new Size(37, 22);
             fileToolStripMenuItem.Text = "File";
@@ -2772,40 +2986,47 @@ namespace Overcapped_Optimizer
             // scanGamesToolStripMenuItem
             // 
             scanGamesToolStripMenuItem.Name = "scanGamesToolStripMenuItem";
-            scanGamesToolStripMenuItem.Size = new Size(214, 22);
+            scanGamesToolStripMenuItem.Size = new Size(235, 22);
             scanGamesToolStripMenuItem.Text = "Scan Installed Games...";
             scanGamesToolStripMenuItem.Click += btnScanGames_Click;
             // 
             // addGameToolStripMenuItem
             // 
             addGameToolStripMenuItem.Name = "addGameToolStripMenuItem";
-            addGameToolStripMenuItem.Size = new Size(214, 22);
+            addGameToolStripMenuItem.Size = new Size(235, 22);
             addGameToolStripMenuItem.Text = "Add Game .exe...";
             addGameToolStripMenuItem.Click += btnAddManualGame_Click;
             // 
             // openPacksToolStripMenuItem
             // 
             openPacksToolStripMenuItem.Name = "openPacksToolStripMenuItem";
-            openPacksToolStripMenuItem.Size = new Size(214, 22);
+            openPacksToolStripMenuItem.Size = new Size(235, 22);
             openPacksToolStripMenuItem.Text = "Open JSON Profile Packs...";
             openPacksToolStripMenuItem.Click += btnOpenPacksFolder_Click;
             // 
             // packBuilderToolStripMenuItem
             // 
             packBuilderToolStripMenuItem.Name = "packBuilderToolStripMenuItem";
-            packBuilderToolStripMenuItem.Size = new Size(214, 22);
+            packBuilderToolStripMenuItem.Size = new Size(235, 22);
             packBuilderToolStripMenuItem.Text = "Open Game Pack Builder...";
             packBuilderToolStripMenuItem.Click += btnPackBuilder_Click;
+            // 
+            // revertAllOptimizationsToolStripMenuItem
+            // 
+            revertAllOptimizationsToolStripMenuItem.Name = "revertAllOptimizationsToolStripMenuItem";
+            revertAllOptimizationsToolStripMenuItem.Size = new Size(235, 22);
+            revertAllOptimizationsToolStripMenuItem.Text = "Revert All Permanent Optimizations...";
+            revertAllOptimizationsToolStripMenuItem.Click += btnDashRevertOptimizations_Click;
             // 
             // toolStripSeparator1
             // 
             toolStripSeparator1.Name = "toolStripSeparator1";
-            toolStripSeparator1.Size = new Size(211, 6);
+            toolStripSeparator1.Size = new Size(232, 6);
             // 
             // exitToolStripMenuItem1
             // 
             exitToolStripMenuItem1.Name = "exitToolStripMenuItem1";
-            exitToolStripMenuItem1.Size = new Size(214, 22);
+            exitToolStripMenuItem1.Size = new Size(235, 22);
             exitToolStripMenuItem1.Text = "Exit";
             exitToolStripMenuItem1.Click += exitToolStripMenuItem1_Click;
             // 
@@ -2884,6 +3105,10 @@ namespace Overcapped_Optimizer
             Load += MainFrm_Load;
             roThemeContainer1.ResumeLayout(false);
             pnlContent.ResumeLayout(false);
+            pnlAbout.ResumeLayout(false);
+            grpLinks.ResumeLayout(false);
+            cardPanel.ResumeLayout(false);
+            grpDiagnostics.ResumeLayout(false);
             pnlDashboard.ResumeLayout(false);
             grpGameLibrary.ResumeLayout(false);
             grpHardware.ResumeLayout(false);
@@ -2900,10 +3125,6 @@ namespace Overcapped_Optimizer
             grpProfiles.PerformLayout();
             grpPerGameOptimzations.ResumeLayout(false);
             grpPerGameOptimzations.PerformLayout();
-            pnlAbout.ResumeLayout(false);
-            grpLinks.ResumeLayout(false);
-            cardPanel.ResumeLayout(false);
-            grpDiagnostics.ResumeLayout(false);
             pnlNetwork.ResumeLayout(false);
             grpNetworkOptimzations.ResumeLayout(false);
             grpNetworkOptimzations.PerformLayout();
@@ -2926,6 +3147,8 @@ namespace Overcapped_Optimizer
         private ToolStripMenuItem scanGamesToolStripMenuItem;
         private ToolStripMenuItem addGameToolStripMenuItem;
         private ToolStripMenuItem openPacksToolStripMenuItem;
+        private ToolStripMenuItem packBuilderToolStripMenuItem;
+        private ToolStripMenuItem revertAllOptimizationsToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator1;
         private ToolStripMenuItem exitToolStripMenuItem1;
         private ToolStripMenuItem aboutToolStripMenuItem;
@@ -2968,6 +3191,7 @@ namespace Overcapped_Optimizer
         private ROActionCard cardQuickShaderCache;
         private AboutLinkTile linkDonate;
         private ROModernButton btnDashRestorePoint;
+        private ROModernButton btnDashRevertOptimizations;
         private ROModernButton btnDashTray;
         private Panel pnlProfiles;
         private ROGroupBox grpProfiles;
@@ -3002,18 +3226,27 @@ namespace Overcapped_Optimizer
         private Label lblPCoresTitle;
         private Label lblPCoresDesc;
         public ROToggle pCoresToggle;
-        private ROSeparator sepTool1;
         private Label lblPowerPlanTitle;
         private Label lblPowerPlanDesc;
         public ROToggle autoPowerPlanToggle;
-        private ROSeparator sepTool2;
+        private ROSeparator sepTool1;
         private Label lblGameModeTitle;
         private Label lblGameModeDesc;
         public ROToggle gameModeDvrToggle;
-        private ROSeparator sepTool3;
         private Label lblFsoTitle;
         private Label lblFsoDesc;
         public ROToggle disabledFSO;
+        private ROSeparator sepTool2;
+        private Label lblHagsTitle;
+        private Label lblHagsDesc;
+        public ROToggle hagsToggle;
+        private Label lblTelemetryTitle;
+        private Label lblTelemetryDesc;
+        public ROToggle telemetryToggle;
+        private ROSeparator sepTool3;
+        private Label lblPauseSearchTitle;
+        private Label lblPauseSearchDesc;
+        public ROToggle pauseSearchToggle;
         private ROSeparator sepTool4;
         private Label lblThrottleTitle;
         private Label lblThrottleDesc;
@@ -3062,10 +3295,17 @@ namespace Overcapped_Optimizer
         private Label lblNicPowerDesc;
         public ROToggle disableNicPowerToggle;
         private ROSeparator sepNet1;
+        private Label lblIntModTitle;
+        private Label lblIntModDesc;
+        public ROToggle disableIntModToggle;
+        private Label lblRssTitle;
+        private Label lblRssDesc;
+        public ROToggle enableRssToggle;
+        private ROSeparator sepNet2;
         private Label lblQosTitle;
         private Label lblQosDesc;
         public ROToggle qosDscpToggle;
-        private ROSeparator sepNet2;
+        private ROSeparator sepNet3;
         private Label lblDeliveryOptTitle;
         private Label lblDeliveryOptDesc;
         public ROToggle deliveryOptToggle;
@@ -3094,7 +3334,6 @@ namespace Overcapped_Optimizer
         private ROModernButton btnOpenSettingsDir;
         private ROToggle startAsAdminToggle;
         private Label lblStartAsAdmin;
-        private ToolStripMenuItem packBuilderToolStripMenuItem;
         private ROModernButton btnGameAutoOptimizes;
         private ROModernButton btnPackBuilder;
         private ROSidebarItem navHotkeys;

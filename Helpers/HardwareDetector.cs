@@ -199,10 +199,207 @@ namespace Overcapped_Optimizer.Helpers
 
             CheckDisplayRefreshRates(warnings);
             CheckRamConfiguration(warnings);
+            CheckPageFileConfiguration(warnings);
+            CheckResizableBar(warnings);
+            CheckHagsAndGameMode(warnings);
             CheckActivePowerPlan(warnings);
             CheckSystemDriveSpace(warnings);
 
             return warnings;
+        }
+
+        /// <summary>
+        /// Returns HwSchMode from GraphicsDrivers: 2 = Enabled, 1 = Disabled, null = Windows/Driver Default.
+        /// </summary>
+        public static int? GetHagsRegistryMode()
+        {
+            try
+            {
+                using RegistryKey? key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\GraphicsDrivers");
+                if (key?.GetValue("HwSchMode") is int mode)
+                    return mode;
+            }
+            catch { }
+            return null;
+        }
+
+        public static bool IsHagsEnabled()
+        {
+            int? mode = GetHagsRegistryMode();
+            if (mode.HasValue) return mode.Value == 2;
+
+            return Environment.OSVersion.Version.Build >= 22000;
+        }
+
+        private static bool IsKnownReBarCapableGpu(string gpuName)
+        {
+            if (string.IsNullOrWhiteSpace(gpuName)) return false;
+
+            return Regex.IsMatch(gpuName, @"\bRTX\s*(30|40|50)\d{2}\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(gpuName, @"\bRX\s*(6|7|9)\d{3}\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(gpuName, @"\bIntel.*Arc\s*[AB]\d{3}\b", RegexOptions.IgnoreCase);
+        }
+
+        private static void CheckResizableBar(List<HardwareHealthWarning> warnings)
+        {
+            try
+            {
+                string gpuName = GetGpuName();
+                if (!IsKnownReBarCapableGpu(gpuName)) return;
+
+                string? discretePnpId = null;
+                using (var vcSearcher = new ManagementObjectSearcher("SELECT Name, PNPDeviceID FROM Win32_VideoController"))
+                {
+                    foreach (ManagementObject obj in vcSearcher.Get())
+                    {
+                        string name = obj["Name"]?.ToString() ?? string.Empty;
+                        string pnp = obj["PNPDeviceID"]?.ToString() ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(pnp)) continue;
+
+                        if (name.Contains(gpuName, StringComparison.OrdinalIgnoreCase) || IsKnownReBarCapableGpu(name))
+                        {
+                            discretePnpId = pnp;
+                            break;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(discretePnpId)) return;
+
+                string escapedPnp = discretePnpId.Replace("\\", "\\\\").Replace("'", "\\'");
+                string assocQuery = $"ASSOCIATORS OF {{Win32_PnPEntity.DeviceID='{escapedPnp}'}} WHERE AssocClass=Win32_AllocatedResource ResultClass=Win32_DeviceMemoryAddress";
+
+                bool foundAnyMemoryRange = false;
+                bool foundLargeMemoryRange = false;
+
+                using (var memSearcher = new ManagementObjectSearcher(assocQuery))
+                {
+                    foreach (ManagementObject mem in memSearcher.Get())
+                    {
+                        if (mem["StartingAddress"] == null || mem["EndingAddress"] == null) continue;
+                        ulong start = Convert.ToUInt64(mem["StartingAddress"]);
+                        ulong end = Convert.ToUInt64(mem["EndingAddress"]);
+                        if (end <= start) continue;
+
+                        foundAnyMemoryRange = true;
+                        ulong rangeBytes = (end - start) + 1;
+
+                        if (rangeBytes >= 512UL * 1024 * 1024)
+                        {
+                            foundLargeMemoryRange = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundAnyMemoryRange && !foundLargeMemoryRange)
+                {
+                    warnings.Add(new HardwareHealthWarning
+                    {
+                        Category = "GPU / BIOS",
+                        Title = $"Resizable BAR / SAM appears disabled ({gpuName})",
+                        Details = "No PCIe Large Memory Range (>256 MB) was detected for your GPU. Enabling 'Above 4G Decoding' and 'Resizable BAR' (Smart Access Memory) in BIOS can improve FPS and 1% Lows in modern DX12/Vulkan titles.",
+                        Severity = HardwareHealthSeverity.Warning
+                    });
+                }
+            }
+            catch { }
+        }
+
+        private static void CheckHagsAndGameMode(List<HardwareHealthWarning> warnings)
+        {
+            try
+            {
+                int? hagsMode = GetHagsRegistryMode();
+                if (hagsMode == 1)
+                {
+                    warnings.Add(new HardwareHealthWarning
+                    {
+                        Category = "GPU",
+                        Title = "Hardware-Accelerated GPU Scheduling (HAGS) is OFF",
+                        Details = "HAGS is currently disabled (HwSchMode = 1). It is required for DLSS Frame Generation and can improve 1% Lows on modern CPUs/GPUs, though some VR/OBS setups prefer it off. You can toggle it under System Optimization (requires reboot).",
+                        Severity = HardwareHealthSeverity.Info
+                    });
+                }
+
+                using RegistryKey? gameBarKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\GameBar");
+                if (gameBarKey?.GetValue("AutoGameModeEnabled") is int gm && gm == 0)
+                {
+                    warnings.Add(new HardwareHealthWarning
+                    {
+                        Category = "Windows",
+                        Title = "Windows Game Mode is turned OFF",
+                        Details = "Game Mode helps Windows prioritize game threads and handle AMD Ryzen X3D core parking properly. Enable 'Game Mode ON & Disable Game DVR' in System Optimization.",
+                        Severity = HardwareHealthSeverity.Warning
+                    });
+                }
+            }
+            catch { }
+        }
+
+        private static void CheckPageFileConfiguration(List<HardwareHealthWarning> warnings)
+        {
+            try
+            {
+                bool autoManaged = true;
+                using (var csSearcher = new ManagementObjectSearcher("SELECT AutomaticManagedPagefile FROM Win32_ComputerSystem"))
+                {
+                    foreach (ManagementObject obj in csSearcher.Get())
+                    {
+                        if (obj["AutomaticManagedPagefile"] != null)
+                            autoManaged = Convert.ToBoolean(obj["AutomaticManagedPagefile"]);
+                    }
+                }
+
+                ulong totalAllocatedMb = 0;
+                using (var usageSearcher = new ManagementObjectSearcher("SELECT AllocatedBaseSize FROM Win32_PageFileUsage"))
+                {
+                    foreach (ManagementObject obj in usageSearcher.Get())
+                    {
+                        if (obj["AllocatedBaseSize"] != null)
+                            totalAllocatedMb += Convert.ToUInt64(obj["AllocatedBaseSize"]);
+                    }
+                }
+
+                ulong totalConfiguredMaxMb = 0;
+                bool hasSystemManagedManualEntry = false;
+                using (var setSearcher = new ManagementObjectSearcher("SELECT MaximumSize FROM Win32_PageFileSetting"))
+                {
+                    foreach (ManagementObject obj in setSearcher.Get())
+                    {
+                        if (obj["MaximumSize"] != null)
+                        {
+                            ulong maxMb = Convert.ToUInt64(obj["MaximumSize"]);
+                            if (maxMb == 0) hasSystemManagedManualEntry = true;
+                            else totalConfiguredMaxMb += maxMb;
+                        }
+                    }
+                }
+
+                double totalRamGb = GetTotalMemoryInGB();
+
+                if (totalAllocatedMb == 0 && !autoManaged)
+                {
+                    warnings.Add(new HardwareHealthWarning
+                    {
+                        Category = "Memory",
+                        Title = "Windows Page File is disabled (0 MB)",
+                        Details = "Disabling the page file causes sudden out-of-memory crashes in Rust, Escape from Tarkov, and Unreal Engine 5 games even with 16-32 GB of RAM. Set Virtual Memory back to 'System managed size' in Windows Advanced System Settings.",
+                        Severity = HardwareHealthSeverity.Warning
+                    });
+                }
+                else if (!autoManaged && !hasSystemManagedManualEntry && totalRamGb <= 17.0 && totalConfiguredMaxMb > 0 && totalConfiguredMaxMb < 4096)
+                {
+                    warnings.Add(new HardwareHealthWarning
+                    {
+                        Category = "Memory",
+                        Title = $"Page File capped low ({totalConfiguredMaxMb} MB max on {totalRamGb:F0} GB RAM)",
+                        Details = "A manually capped page file under 4 GB on a 16 GB system can cause silent crashes when games commit heavy virtual memory. Switch Virtual Memory to 'System managed size' or raise the cap to at least 8192-16384 MB.",
+                        Severity = HardwareHealthSeverity.Warning
+                    });
+                }
+            }
+            catch { }
         }
 
         private static void CheckDisplayRefreshRates(List<HardwareHealthWarning> warnings)

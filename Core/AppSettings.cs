@@ -23,6 +23,8 @@ namespace Overcapped_Optimizer.Core
         public bool GameModeAndDisableDvr { get; set; } = false;
         public bool DisableFSO { get; set; } = false;
         public bool ThrottleBackgroundApps { get; set; } = false;
+        public bool PauseWindowsSearchWhileGaming { get; set; } = false;
+        public bool ReduceWindowsTelemetry { get; set; } = false;
         public List<string> BackgroundAppsToThrottle { get; set; } = new(AppSettings.DefaultThrottledApps);
         public bool DisableDeliveryOptimization { get; set; } = false;
         public bool FpsOverlayEnabled { get; set; } = false;
@@ -33,6 +35,8 @@ namespace Overcapped_Optimizer.Core
         public int FpsOverlayCustomY { get; set; } = 24;
         public int FpsOverlayOpacity { get; set; } = 75;
         public bool DisableNicPowerSaving { get; set; } = false;
+        public bool DisableInterruptModeration { get; set; } = false;
+        public bool EnableNicRss { get; set; } = true;
         public string LastPingServer { get; set; } = "1.1.1.1";
         public bool CheckForUpdates { get; set; } = true;
         public List<GameProfile> Games { get; set; } = new();
@@ -66,6 +70,7 @@ namespace Overcapped_Optimizer.Core
         public static string SettingsFilePath { get; } = Path.Combine(DataDirectory, "settings.json");
         public static string PacksDirectory { get; } = Path.Combine(DataDirectory, "Profiles");
         public static string BenchmarksDirectory { get; } = Path.Combine(DataDirectory, "Benchmarks");
+        public static string RegistrySnapshotFilePath { get; } = Path.Combine(DataDirectory, "registry_snapshot.json");
 
         public static SettingsData Current { get; private set; } = new();
 
